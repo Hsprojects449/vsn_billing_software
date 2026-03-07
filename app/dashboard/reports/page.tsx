@@ -1,549 +1,278 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
 import { DashboardPageWrapper } from "@/components/dashboard-page-wrapper"
-import { TrendingUp, DollarSign, FileText, Users, Clock, CheckCircle, AlertCircle } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { MonthYearPicker } from "@/components/month-year-picker"
 
-// Get current financial year date range
-function getCurrentFinancialYearRange() {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = today.getMonth() // 0-indexed
-  
-  // If month is Jan, Feb, or Mar (0, 1, 2), we're in the previous FY
-  const startYear = month < 3 ? year - 1 : year
-  const endYear = startYear + 1
-  
-  return {
-    start: `${startYear}-04-01`,
-    end: `${endYear}-03-31`,
-    fy: `${startYear}-${endYear}`
-  }
-}
+export const revalidate = 0
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string; year?: string }>
+}) {
   const supabase = await createClient()
 
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) {
-    redirect("/auth/login")
-  }
+  if (!user) redirect("/auth/login")
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
   if (!profile || (profile.role !== "super_admin" && profile.role !== "admin")) {
     redirect("/dashboard")
   }
 
-  // Get current FY range
-  const fyRange = getCurrentFinancialYearRange()
-
-  // Fetch all necessary data for reports (filtered by current FY)
-  const [invoicesResult, paymentsResult, clientsResult] = await Promise.all([
-    supabase.from("invoices").select("*, clients(name)")
-      .gte("issue_date", fyRange.start)
-      .lte("issue_date", fyRange.end),
-    supabase.from("payments").select("*")
-      .gte("payment_date", fyRange.start)
-      .lte("payment_date", fyRange.end),
-    supabase.from("clients").select("id, name"),
-  ])
-
-  const invoices = invoicesResult.data || []
-  const payments = paymentsResult.data || []
-  const clients = clientsResult.data || []
-
-  // Calculate financial metrics
-  const totalRevenue = payments.reduce((sum, p) => sum + Number(p.amount), 0)
-  const totalInvoiced = invoices.reduce((sum, inv) => sum + Number(inv.total_amount), 0)
-  const totalOutstanding = invoices
-    .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled")
-    .reduce((sum, inv) => sum + (Number(inv.total_amount) - Number(inv.amount_paid)), 0)
-
-  const paidInvoices = invoices.filter((inv) => inv.status === "paid").length
-  // Compute overdue dynamically based on due_date and unpaid balance to sync with dashboard/table logic
-  const msInDay = 1000 * 60 * 60 * 24
+  const params = await searchParams
   const today = new Date()
-  const overdueInvoices = invoices.filter((inv) => {
-    const balance = Number(inv.total_amount) - Number(inv.amount_paid)
-    const dueDate = new Date(inv.due_date)
-    const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / msInDay)
-    return balance > 0 && daysOverdue > 0
-  }).length
-  const draftInvoices = invoices.filter((inv) => inv.status === "draft").length
+  const reportYear = params.year ? parseInt(params.year) : today.getFullYear()
+  const reportMonth = params.month ? parseInt(params.month) : today.getMonth() + 1
 
-  // Calculate monthly revenue
-  const monthlyRevenue = payments.reduce(
-    (acc, payment) => {
-      const date = new Date(payment.payment_date)
-      const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
-      acc[monthYear] = (acc[monthYear] || 0) + Number(payment.amount)
-      return acc
-    },
-    {} as Record<string, number>,
-  )
+  const monthStart = `${reportYear}-${String(reportMonth).padStart(2, "0")}-01`
+  const daysInMonth = new Date(reportYear, reportMonth, 0).getDate()
+  const monthEnd = `${reportYear}-${String(reportMonth).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`
 
-  const sortedMonths = Object.keys(monthlyRevenue).sort()
-  const recentMonths = sortedMonths.slice(-6)
+  const monthLabel = new Date(reportYear, reportMonth - 1, 1).toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
+  })
 
-  // Client revenue analysis
-  const clientRevenue = invoices.reduce(
-    (acc, invoice) => {
-      const clientName = invoice.clients.name
-      if (!acc[clientName]) {
-        acc[clientName] = { total: 0, paid: 0, outstanding: 0, invoiceCount: 0 }
-      }
-      acc[clientName].total += Number(invoice.total_amount)
-      acc[clientName].paid += Number(invoice.amount_paid)
-      acc[clientName].outstanding += Number(invoice.total_amount) - Number(invoice.amount_paid)
-      acc[clientName].invoiceCount += 1
-      return acc
-    },
-    {} as Record<string, { total: number; paid: number; outstanding: number; invoiceCount: number }>,
-  )
+  // Fetch all required data in parallel
+  const [clientsResult, currentMonthInvoicesResult, allUnpaidInvoicesResult, currentMonthPaymentsResult] =
+    await Promise.all([
+      supabase.from("clients").select("id, name").order("name", { ascending: true }),
 
-  const topClients = Object.entries(clientRevenue)
-    .sort(([, a], [, b]) => b.total - a.total)
-    .slice(0, 10)
+      supabase
+        .from("invoices")
+        .select("id, client_id, total_amount, invoice_items(quantity)")
+        .gte("issue_date", monthStart)
+        .lte("issue_date", monthEnd),
 
-  // Overdue breakdown by days
-  const overdueBreakdown = {
-    "0-7": { count: 0, invoices: [] as typeof invoices },
-    "8-14": { count: 0, invoices: [] as typeof invoices },
-    "15-30": { count: 0, invoices: [] as typeof invoices },
-    "31-60": { count: 0, invoices: [] as typeof invoices },
-    "60+": { count: 0, invoices: [] as typeof invoices },
+      supabase
+        .from("invoices")
+        .select("client_id, total_amount, amount_paid, issue_date")
+        .neq("status", "cancelled")
+        .neq("status", "paid"),
+
+      supabase
+        .from("payments")
+        .select("amount, invoices(client_id)")
+        .gte("payment_date", monthStart)
+        .lte("payment_date", monthEnd),
+    ])
+
+  const clients = clientsResult.data || []
+  const currentMonthInvoices = currentMonthInvoicesResult.data || []
+  const allUnpaidInvoices = allUnpaidInvoicesResult.data || []
+  const currentMonthPayments = currentMonthPaymentsResult.data || []
+
+  type ClientRow = {
+    id: string
+    name: string
+    sale: number
+    saleKgs: number
+    payments: number
+    outstanding: number
+    oldBal: number
   }
 
-  const overdueInvoicesList = invoices.filter((inv) => {
-    const balance = Number(inv.total_amount) - Number(inv.amount_paid)
-    const dueDate = new Date(inv.due_date)
-    const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / msInDay)
-    return balance > 0 && daysOverdue > 0
-  })
+  const clientMap = new Map<string, ClientRow>()
+  for (const client of clients) {
+    clientMap.set(client.id, {
+      id: client.id,
+      name: client.name,
+      sale: 0,
+      saleKgs: 0,
+      payments: 0,
+      outstanding: 0,
+      oldBal: 0,
+    })
+  }
 
-  overdueInvoicesList.forEach((inv) => {
-    const dueDate = new Date(inv.due_date)
-    const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / msInDay)
-    
-    if (daysOverdue <= 7) {
-      overdueBreakdown["0-7"].invoices.push(inv)
-      overdueBreakdown["0-7"].count++
-    } else if (daysOverdue <= 14) {
-      overdueBreakdown["8-14"].invoices.push(inv)
-      overdueBreakdown["8-14"].count++
-    } else if (daysOverdue <= 30) {
-      overdueBreakdown["15-30"].invoices.push(inv)
-      overdueBreakdown["15-30"].count++
-    } else if (daysOverdue <= 60) {
-      overdueBreakdown["31-60"].invoices.push(inv)
-      overdueBreakdown["31-60"].count++
-    } else {
-      overdueBreakdown["60+"].invoices.push(inv)
-      overdueBreakdown["60+"].count++
+  for (const invoice of currentMonthInvoices) {
+    const row = clientMap.get(invoice.client_id)
+    if (!row) continue
+    row.sale += Number(invoice.total_amount)
+    const items = (invoice.invoice_items as { quantity: string | number | null }[] | null) ?? []
+    row.saleKgs += items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+  }
+
+  for (const invoice of allUnpaidInvoices) {
+    const balance = Number(invoice.total_amount) - Number(invoice.amount_paid)
+    if (balance <= 0) continue
+    const row = clientMap.get(invoice.client_id)
+    if (!row) continue
+    row.outstanding += balance
+    if (invoice.issue_date < monthStart) {
+      row.oldBal += balance
     }
-  })
+  }
 
-  // Recent activity
-  const recentInvoices = [...invoices]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 10)
+  for (const payment of currentMonthPayments) {
+    const clientId = (payment.invoices as unknown as { client_id: string } | null)?.client_id
+    if (!clientId) continue
+    const row = clientMap.get(clientId)
+    if (!row) continue
+    row.payments += Number(payment.amount)
+  }
 
-  const recentPayments = [...payments]
-    .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())
-    .slice(0, 10)
+  const rows = Array.from(clientMap.values()).filter(
+    (r) => r.sale > 0 || r.payments > 0 || r.outstanding > 0 || r.oldBal > 0,
+  )
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      oldBal: acc.oldBal + r.oldBal,
+      sale: acc.sale + r.sale,
+      saleKgs: acc.saleKgs + r.saleKgs,
+      payments: acc.payments + r.payments,
+      outstanding: acc.outstanding + r.outstanding,
+    }),
+    { oldBal: 0, sale: 0, saleKgs: 0, payments: 0, outstanding: 0 },
+  )
+
+  const fmt = (n: number) =>
+    n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   return (
-    <DashboardPageWrapper title="Reports & Analytics">
+    <DashboardPageWrapper title="Reports">
       <div className="w-full p-4 sm:p-6 lg:p-8">
-        <div className="mb-6">
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Showing reports for Financial Year: <span className="font-semibold text-foreground">{fyRange.fy}</span>
-          </p>
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              Monthly Report:{" "}
+              <span className="font-semibold text-foreground">{monthLabel}</span>
+            </p>
+          </div>
+          <MonthYearPicker currentYear={reportYear} currentMonth={reportMonth} />
         </div>
-        
-        {/* Key Metrics */}
-        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg sm:text-2xl font-bold">₹{totalRevenue.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground mt-1">All-time payments received</p>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Total Invoiced</CardTitle>
-            <FileText className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg sm:text-2xl font-bold">₹{totalInvoiced.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{invoices.length} invoices created</p>
-          </CardContent>
-        </Card>
+        {/* Report Table */}
+        <div className="rounded-lg border bg-white overflow-x-auto">
+          <Table className="text-xs sm:text-sm">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="px-2 sm:px-4 py-2 sm:py-3">Hotel</TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">Old Bal</TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">Sale</TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">Sale KGS</TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">Avg Qty</TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">Payments</TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">Outstanding</TableHead>
+              </TableRow>
+              <TableRow>
+                <TableHead className="px-2 sm:px-4 py-1.5 font-normal text-muted-foreground" />
+                <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
+                  Outstanding − Current month Sale
+                </TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
+                  Current Month Sale
+                </TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
+                  Total Purchased Qty
+                </TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground leading-tight">
+                  Avg Qty per Day
+                  <br />
+                  Total / {daysInMonth} days
+                </TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
+                  Current Month Payments
+                </TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
+                  Total Outstanding
+                </TableHead>
+              </TableRow>
+            </TableHeader>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Outstanding</CardTitle>
-            <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg sm:text-2xl font-bold">₹{totalOutstanding.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Pending payment collection</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Active Clients</CardTitle>
-            <Users className="h-3 w-3 sm:h-4 sm:w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg sm:text-2xl font-bold">{clients.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total clients in system</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Invoice Status Overview */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Paid Invoices</CardTitle>
-            <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg sm:text-2xl font-bold">{paidInvoices}</div>
-            <p className="text-xs text-muted-foreground mt-1">Successfully completed</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Overdue Invoices</CardTitle>
-            <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg sm:text-2xl font-bold">{overdueInvoices}</div>
-            <p className="text-xs text-muted-foreground mt-1">Require immediate attention</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Draft Invoices</CardTitle>
-            <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-gray-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg sm:text-2xl font-bold">{draftInvoices}</div>
-            <p className="text-xs text-muted-foreground mt-1">Not yet sent to clients</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabbed Reports */}
-      <Tabs defaultValue="revenue" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="revenue">Revenue Trends</TabsTrigger>
-          <TabsTrigger value="overdues">Overdue by Days</TabsTrigger>
-          <TabsTrigger value="clients">Top Clients</TabsTrigger>
-          <TabsTrigger value="activity">Recent Activity</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="revenue" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Monthly Revenue (Last 6 Months)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {recentMonths.map((month) => {
-                  const revenue = monthlyRevenue[month]
-                  const [year, monthNum] = month.split("-")
-                  const monthName = new Date(Number(year), Number(monthNum) - 1).toLocaleDateString("en-US", {
-                    month: "long",
-                    year: "numeric",
-                  })
-
-                  // Calculate percentage for progress bar
-                  const maxRevenue = Math.max(...Object.values(monthlyRevenue))
-                  const percentage = (revenue / maxRevenue) * 100
-
-                  return (
-                    <div key={month} className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{monthName}</span>
-                        <span className="text-muted-foreground">₹{revenue.toFixed(2)}</span>
-                      </div>
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-600 rounded-full transition-all"
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {recentMonths.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">No revenue data available</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="overdues" className="space-y-6">
-          <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 mb-6">
-            {Object.entries(overdueBreakdown).map(([range, data]) => (
-              <Card key={range}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs sm:text-sm font-medium">{range} Days</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-lg sm:text-2xl font-bold text-red-600">{data.count}</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {data.count === 1 ? "invoice" : "invoices"}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Overdue Invoices Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {Object.entries(overdueBreakdown).map(([range, data]) => (
-                  <div key={range}>
-                    <h4 className="font-semibold text-sm mb-3">{range} Days Overdue ({data.count})</h4>
-                    {data.invoices.length > 0 ? (
-                      <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-muted/50">
-                              <TableHead className="text-xs">Invoice #</TableHead>
-                              <TableHead className="text-xs">Client</TableHead>
-                              <TableHead className="text-xs text-right">Amount</TableHead>
-                              <TableHead className="text-xs text-right">Balance</TableHead>
-                              <TableHead className="text-xs text-right">Due Date</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {data.invoices.slice(0, 5).map((inv) => {
-                              const balance = Number(inv.total_amount) - Number(inv.amount_paid)
-                              const dueDate = new Date(inv.due_date)
-                              const daysOverdue = Math.floor(
-                                (today.getTime() - dueDate.getTime()) / msInDay
-                              )
-                              return (
-                                <TableRow key={inv.id}>
-                                  <TableCell className="text-xs font-medium">#{inv.invoice_number}</TableCell>
-                                  <TableCell className="text-xs">{inv.clients.name}</TableCell>
-                                  <TableCell className="text-xs text-right">₹{Number(inv.total_amount).toFixed(2)}</TableCell>
-                                  <TableCell className="text-xs text-right font-semibold text-red-600">
-                                    ₹{balance.toFixed(2)}
-                                  </TableCell>
-                                  <TableCell className="text-xs text-right">
-                                    {dueDate.toLocaleDateString("en-IN")}
-                                    <br />
-                                    <span className="text-red-600 font-semibold">{daysOverdue}d</span>
-                                  </TableCell>
-                                </TableRow>
-                              )
-                            })}
-                          </TableBody>
-                        </Table>
-                        {data.invoices.length > 5 && (
-                          <div className="px-4 py-2 bg-muted/50 text-xs text-muted-foreground border-t">
-                            +{data.invoices.length - 5} more invoice{data.invoices.length - 5 > 1 ? "s" : ""}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-4">No overdue invoices in this range</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {overdueInvoicesList.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">No overdue invoices - great job!</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="clients" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Top 10 Clients by Revenue</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Client Name</TableHead>
-                    <TableHead className="text-right">Total Invoiced</TableHead>
-                    <TableHead className="text-right">Amount Paid</TableHead>
-                    <TableHead className="text-right">Outstanding</TableHead>
-                    <TableHead className="text-right">Invoices</TableHead>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={7}
+                    className="text-center text-muted-foreground py-16 px-2 sm:px-4"
+                  >
+                    No activity found for {monthLabel}.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-medium px-2 sm:px-4 py-2 sm:py-3">
+                      {row.name}
+                    </TableCell>
+                    <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                      {row.oldBal > 0 ? `₹${fmt(row.oldBal)}` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                      {row.sale > 0 ? `₹${fmt(row.sale)}` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                      {row.saleKgs > 0 ? row.saleKgs.toFixed(2) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                      {row.saleKgs > 0 ? (
+                        <>
+                          {(row.saleKgs / daysInMonth).toFixed(2)}
+                          <span className="text-muted-foreground ml-1">
+                            / {daysInMonth}d
+                          </span>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3 text-green-700">
+                      {row.payments > 0 ? `₹${fmt(row.payments)}` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3 font-semibold text-orange-700">
+                      {row.outstanding > 0 ? `₹${fmt(row.outstanding)}` : "—"}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {topClients.map(([clientName, data]) => (
-                    <TableRow key={clientName}>
-                      <TableCell className="font-medium">{clientName}</TableCell>
-                      <TableCell className="text-right">₹{data.total.toFixed(2)}</TableCell>
-                      <TableCell className="text-right text-green-600">₹{data.paid.toFixed(2)}</TableCell>
-                      <TableCell className="text-right text-orange-600">₹{data.outstanding.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">{data.invoiceCount}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              {topClients.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">No client data available</p>
+                ))
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="activity" className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Invoices</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {recentInvoices.map((invoice) => (
-                    <div key={invoice.id} className="flex items-center justify-between border-b pb-3 last:border-0">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">{invoice.invoice_number}</p>
-                        <p className="text-xs text-muted-foreground">{invoice.clients.name}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium">₹{Number(invoice.total_amount).toFixed(2)}</span>
-                        <Badge
-                          variant="secondary"
-                          className={
-                            invoice.status === "paid"
-                              ? "bg-green-100 text-green-800"
-                              : invoice.status === "overdue"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-blue-100 text-blue-800"
-                          }
-                        >
-                          {invoice.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {recentInvoices.length === 0 && (
-                  <p className="text-center text-muted-foreground py-8">No invoices yet</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Payments</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {recentPayments.map((payment) => (
-                    <div key={payment.id} className="flex items-center justify-between border-b pb-3 last:border-0">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium capitalize">{payment.payment_method.replace("_", " ")}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(payment.payment_date).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-green-600">₹{Number(payment.amount).toFixed(2)}</span>
-                        <Badge
-                          variant="secondary"
-                          className={
-                            payment.status === "completed"
-                              ? "bg-green-100 text-green-800"
-                              : payment.status === "failed"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-yellow-100 text-yellow-800"
-                          }
-                        >
-                          {payment.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {recentPayments.length === 0 && (
-                  <p className="text-center text-muted-foreground py-8">No payments yet</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Collection Rate */}
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Collection Performance</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Collection Rate</p>
-                <p className="text-xs text-muted-foreground">Percentage of invoiced amount collected</p>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold">
-                  {totalInvoiced > 0 ? ((totalRevenue / totalInvoiced) * 100).toFixed(1) : 0}%
-                </p>
-              </div>
-            </div>
-            <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-green-600 rounded-full transition-all flex items-center justify-end pr-2"
-                style={{ width: `${totalInvoiced > 0 ? (totalRevenue / totalInvoiced) * 100 : 0}%` }}
-              >
-                {totalInvoiced > 0 && (totalRevenue / totalInvoiced) * 100 > 10 && (
-                  <TrendingUp className="h-3 w-3 text-white" />
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4 pt-2">
-              <div className="text-center p-3 bg-green-50 rounded-lg">
-                <p className="text-xs text-muted-foreground">Collected</p>
-                <p className="text-lg font-bold text-green-700">₹{totalRevenue.toFixed(2)}</p>
-              </div>
-              <div className="text-center p-3 bg-orange-50 rounded-lg">
-                <p className="text-xs text-muted-foreground">Pending</p>
-                <p className="text-lg font-bold text-orange-700">₹{totalOutstanding.toFixed(2)}</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+              {/* Totals row */}
+              {rows.length > 0 && (
+                <TableRow className="border-t-2 font-bold bg-muted/30">
+                  <TableCell className="px-2 sm:px-4 py-2 sm:py-3">Total Sale</TableCell>
+                  <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                    ₹{fmt(totals.oldBal)}
+                  </TableCell>
+                  <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                    ₹{fmt(totals.sale)}
+                  </TableCell>
+                  <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                    {totals.saleKgs > 0 ? totals.saleKgs.toFixed(2) : "0"}
+                  </TableCell>
+                  <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3 font-normal text-muted-foreground">
+                    —
+                  </TableCell>
+                  <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3 text-green-700">
+                    ₹{fmt(totals.payments)}
+                  </TableCell>
+                  <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3 text-orange-700">
+                    ₹{fmt(totals.outstanding)}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </DashboardPageWrapper>
   )
 }
