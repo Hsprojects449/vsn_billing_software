@@ -106,7 +106,7 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
       <div className="relative w-full sm:w-64">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search hotel…"
+          placeholder="Search clients…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-8 h-9 text-sm"
@@ -119,19 +119,19 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
           <TableHeader>
             <TableRow>
               <TableHead className={thClass("name", false)} onClick={() => handleSort("name")}>
-                Hotel <SortIcon col="name" />
+                Clients <SortIcon col="name" />
               </TableHead>
               <TableHead className={thClass("oldBal")} onClick={() => handleSort("oldBal")}>
-                Old Bal <SortIcon col="oldBal" />
+                Old balance <SortIcon col="oldBal" />
               </TableHead>
               <TableHead className={thClass("sale")} onClick={() => handleSort("sale")}>
                 Sale <SortIcon col="sale" />
               </TableHead>
               <TableHead className={thClass("saleKgs")} onClick={() => handleSort("saleKgs")}>
-                Sale KGS <SortIcon col="saleKgs" />
+                Sale in KGs <SortIcon col="saleKgs" />
               </TableHead>
               <TableHead className={thClass("avgQty")} onClick={() => handleSort("avgQty")}>
-                Avg Qty <SortIcon col="avgQty" />
+                Average quantity <SortIcon col="avgQty" />
               </TableHead>
               <TableHead className={thClass("payments")} onClick={() => handleSort("payments")}>
                 Payments <SortIcon col="payments" />
@@ -142,25 +142,25 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
             </TableRow>
             <TableRow>
               <TableHead className="px-2 sm:px-4 py-1.5 font-normal text-muted-foreground" />
-              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
-                Outstanding − Current month Sale
+              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground text-xs">
+                Outstanding - Current month sale
               </TableHead>
-              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
-                Current Month Sale
+              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground text-xs">
+                Current month sale
               </TableHead>
-              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
-                Total Purchased Qty
+              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground text-xs">
+                Total purchased quantity 
               </TableHead>
-              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground leading-tight">
-                Avg Qty per Day
+              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground leading-tight text-xs">
+                Average quantity per day
                 <br />
                 Total / {daysInMonth} days
               </TableHead>
-              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
-                Current Month Payments
+              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground text-xs">
+                Current month payments
               </TableHead>
-              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground">
-                Total Outstanding
+              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground text-xs">
+                Total outstanding
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -169,7 +169,7 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-16 px-2 sm:px-4">
-                  {search ? `No hotels matching "${search}".` : `No activity found for ${monthLabel}.`}
+                  {search ? `No matching clients "${search}".` : `No activity found for ${monthLabel}.`}
                 </TableCell>
               </TableRow>
             ) : (
@@ -189,7 +189,7 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
                     {row.saleKgs > 0 ? (
                       <>
                         {(row.saleKgs / daysInMonth).toFixed(2)}
-                        <span className="text-muted-foreground ml-1">/ {daysInMonth}d</span>
+                        {/* <span className="text-muted-foreground ml-1">/ {daysInMonth}d</span> */}
                       </>
                     ) : (
                       "—"
