@@ -31,6 +31,7 @@ export default async function ReportsPage({
 
   const params = await searchParams
   const today = new Date()
+  const todayDate = today.toISOString().split("T")[0]
   const reportYear = params.year ? parseInt(params.year) : today.getFullYear()
   const reportMonth = params.month ? parseInt(params.month) : today.getMonth() + 1
 
@@ -50,7 +51,7 @@ export default async function ReportsPage({
 
       supabase
         .from("invoices")
-        .select("id, client_id, total_amount, invoice_items(quantity)")
+        .select("id, client_id, issue_date, total_amount, invoice_items(quantity)")
         .gte("issue_date", monthStart)
         .lte("issue_date", monthEnd),
 
@@ -76,6 +77,8 @@ export default async function ReportsPage({
     id: string
     name: string
     sale: number
+    todaySaleQty: number
+    todaySaleValue: number
     saleKgs: number
     payments: number
     outstanding: number
@@ -88,6 +91,8 @@ export default async function ReportsPage({
       id: client.id,
       name: client.name,
       sale: 0,
+      todaySaleQty: 0,
+      todaySaleValue: 0,
       saleKgs: 0,
       payments: 0,
       outstanding: 0,
@@ -100,7 +105,12 @@ export default async function ReportsPage({
     if (!row) continue
     row.sale += Number(invoice.total_amount)
     const items = (invoice.invoice_items as { quantity: string | number | null }[] | null) ?? []
-    row.saleKgs += items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    const invoiceQty = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    row.saleKgs += invoiceQty
+    if (invoice.issue_date === todayDate) {
+      row.todaySaleQty += invoiceQty
+      row.todaySaleValue += Number(invoice.total_amount || 0)
+    }
   }
 
   for (const invoice of allUnpaidInvoices) {

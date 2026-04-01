@@ -10,14 +10,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { Trash2 } from "lucide-react";
+import { Check, ChevronDown, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
@@ -66,6 +71,7 @@ interface InvoiceFormProps {
     price: number;
     effective_date: string;
   }>;
+  lastInvoiceNumber?: string | null;
   initialInvoice?: {
     id: string;
     client_id: string;
@@ -105,12 +111,32 @@ interface InvoiceItem {
   use_per_bird?: boolean;
 }
 
+const sanitizeInvoiceNumberInput = (value: string) =>
+  value.replace(/[^A-Za-z0-9-]/g, "");
+
+const getNextInvoiceNumber = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const match = trimmed.match(/^(.*?)(\d+)$/);
+  if (!match) return sanitizeInvoiceNumberInput(trimmed);
+
+  const prefix = match[1];
+  const numericPart = match[2];
+  const nextValue = (Number(numericPart) + 1)
+    .toString()
+    .padStart(numericPart.length, "0");
+
+  return sanitizeInvoiceNumberInput(`${prefix}${nextValue}`);
+};
+
 export function InvoiceForm({
   clients,
   products,
   clientPricingRules,
   priceCategories = [],
   priceHistory = [],
+  lastInvoiceNumber,
   initialInvoice,
   initialItems,
 }: InvoiceFormProps) {
@@ -135,7 +161,6 @@ export function InvoiceForm({
       return sum + (itemSubtotal * Number(item.tax_rate)) / 100;
     }, 0);
 
-    // Subtotal with taxes
     const subtotal_with_taxes = subtotal + line_tax_amount;
 
     // Calculate line discounts
@@ -188,13 +213,22 @@ export function InvoiceForm({
 
   const [formData, setFormData] = useState({
     client_id: initialInvoice?.client_id || "",
-    invoice_number: initialInvoice?.invoice_number || "",
+    invoice_number:
+      initialInvoice?.invoice_number ||
+      (lastInvoiceNumber ? getNextInvoiceNumber(lastInvoiceNumber) : ""),
     issue_date: initialInvoice?.issue_date || today,
     due_date: initialInvoice?.due_date || defaultDue,
     due_days_type:
       initialInvoice?.due_days_type || selectedDueDaysType || "fixed_days",
     notes: initialInvoice?.notes || "",
   });
+  const [continueInvoiceSequence, setContinueInvoiceSequence] = useState(
+    !initialInvoice?.id && !!lastInvoiceNumber,
+  );
+  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [clientSearchValue, setClientSearchValue] = useState("");
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [productSearchValue, setProductSearchValue] = useState("");
 
   // ensure per-bird settings from client are loaded when form initialises
   useEffect(() => {
@@ -223,6 +257,8 @@ export function InvoiceForm({
   // Track when a duplicate is added to show toast after state settles
   const lastItemCountRef = useRef(items.length);
   const lastItemsRef = useRef(items);
+  const quantityInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const previousItemsCountForFocusRef = useRef(items.length);
 
   useEffect(() => {
     // Only check for duplicates when items increased (new item added)
@@ -248,6 +284,20 @@ export function InvoiceForm({
     lastItemCountRef.current = items.length;
     lastItemsRef.current = items;
   }, [items, toast]);
+
+  useEffect(() => {
+    if (items.length > previousItemsCountForFocusRef.current && items.length > 0) {
+      const lastQuantityInput = quantityInputRefs.current[items.length - 1];
+      if (lastQuantityInput) {
+        requestAnimationFrame(() => {
+          lastQuantityInput.focus();
+          lastQuantityInput.select();
+        });
+      }
+    }
+
+    previousItemsCountForFocusRef.current = items.length;
+  }, [items]);
 
   const getClientAdjustment = (clientId: string) => {
     const client = clients.find((c) => c.id === clientId);
@@ -812,6 +862,26 @@ export function InvoiceForm({
     updateItemByIndex(index, (item) => ({ ...item, description: value }));
   };
 
+  const focusQuantityInput = (index: number) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const targetInput = quantityInputRefs.current[index];
+        if (targetInput) {
+          targetInput.focus();
+          targetInput.select();
+        }
+      });
+    });
+  };
+
+  const handleQuickAddProduct = (productId: string) => {
+    const nextItemIndex = items.length;
+    handleProductToggle(productId, true);
+    setIsQuickAddOpen(false);
+    setProductSearchValue("");
+    focusQuantityInput(nextItemIndex);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -854,7 +924,24 @@ export function InvoiceForm({
 
       if (!invoiceId) {
         // Use manual invoice number from form
-        const invoiceNumber = formData.invoice_number;
+        const invoiceNumber = sanitizeInvoiceNumberInput(
+          formData.invoice_number,
+        );
+
+        if (!invoiceNumber) {
+          setError("Invoice number is required.");
+          setIsLoading(false);
+          return;
+        }
+
+        if (invoiceNumber !== formData.invoice_number.trim()) {
+          setError(
+            "Invoice number can only contain letters, numbers, and hyphen (-).",
+          );
+          setIsLoading(false);
+          return;
+        }
+
         // Generate reference number with REF. prefix
         const referenceNumber = `REF-${Date.now()}`;
 
@@ -976,6 +1063,19 @@ export function InvoiceForm({
   };
 
   const selectedClient = clients.find((c) => c.id === formData.client_id);
+  const filteredClients = clients.filter((client) =>
+    client.name.toLowerCase().includes(clientSearchValue.toLowerCase()),
+  );
+  const availableProducts = products.filter((p) =>
+    clientPricingRules.some(
+      (rule) =>
+        rule.product_id === p.id &&
+        rule.client_id === formData.client_id,
+    ),
+  );
+  const filteredProducts = availableProducts.filter((product) =>
+    product.name.toLowerCase().includes(productSearchValue.toLowerCase()),
+  );
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -989,22 +1089,58 @@ export function InvoiceForm({
               <Label htmlFor="client_id">
                 Client <span className="text-red-500">*</span>
               </Label>
-              <Select
-                value={formData.client_id}
-                onValueChange={(value) => handleClientChange(value)}
-                disabled={!!initialInvoice?.id}
+              <Popover
+                open={isClientDropdownOpen}
+                onOpenChange={(open) => {
+                  setIsClientDropdownOpen(open);
+                  if (!open) {
+                    setClientSearchValue("");
+                  }
+                }}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a client" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isClientDropdownOpen}
+                    id="client_id"
+                    className="w-full justify-between font-normal"
+                    disabled={!!initialInvoice?.id}
+                  >
+                    {selectedClient ? selectedClient.name : "Select a client"}
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                  <Command>
+                    <CommandInput
+                      placeholder="Type client name..."
+                      value={clientSearchValue}
+                      onValueChange={setClientSearchValue}
+                    />
+                    <CommandList>
+                      <CommandEmpty>No client found.</CommandEmpty>
+                      {filteredClients.map((client) => (
+                        <CommandItem
+                          key={client.id}
+                          value={client.name}
+                          onSelect={() => {
+                            handleClientChange(client.id);
+                            setIsClientDropdownOpen(false);
+                            setClientSearchValue("");
+                          }}
+                        >
+                          <Check
+                            className={`mr-2 h-4 w-4 ${formData.client_id === client.id ? "opacity-100" : "opacity-0"}`}
+                          />
+                          {client.name}
+                        </CommandItem>
+                      ))}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {selectedClient && (
                 <div className="mt-1">
                   {selectedClient.enable_per_bird ? (
@@ -1030,16 +1166,47 @@ export function InvoiceForm({
                 id="invoice_number"
                 required
                 value={formData.invoice_number}
-                onChange={(e) =>
-                  setFormData({ ...formData, invoice_number: e.target.value })
-                }
+                onChange={(e) => {
+                  const sanitizedValue = sanitizeInvoiceNumberInput(
+                    e.target.value,
+                  );
+                  setFormData({ ...formData, invoice_number: sanitizedValue });
+                }}
                 placeholder="e.g., INV-001, INV-002"
                 disabled={!!initialInvoice?.id}
+                pattern="[A-Za-z0-9-]+"
               />
+              {!initialInvoice?.id && (
+                <div className="flex items-center justify-between gap-3 rounded-md border p-2">
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-medium">Continue sequence</p>
+                    <p className="text-xs text-muted-foreground">
+                      Auto-fill next invoice number from previous series.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={continueInvoiceSequence}
+                    onCheckedChange={(checked) => {
+                      setContinueInvoiceSequence(checked);
+                      if (checked) {
+                        const sourceValue =
+                          formData.invoice_number || lastInvoiceNumber || "";
+                        const nextNumber = getNextInvoiceNumber(sourceValue);
+                        if (nextNumber) {
+                          setFormData({
+                            ...formData,
+                            invoice_number: nextNumber,
+                          });
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 {initialInvoice?.id
                   ? "Invoice number cannot be changed"
-                  : "Enter a unique invoice number"}
+                  : "Only letters, numbers, and hyphen (-) are allowed"}
               </p>
             </div>
           </div>
@@ -1085,16 +1252,13 @@ export function InvoiceForm({
                   required
                   placeholder="Select due date"
                   value={formData.due_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, due_date: e.target.value })
-                  }
+                  disabled
                 />
               )}
-              {selectedDueDaysType === "end_of_month" && (
-                <p className="text-xs text-blue-600">
-                  Auto-calculated as the end of the month based on issue date
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Due date is auto-calculated from client due settings and issue
+                date.
+              </p>
             </div>
           </div>
         </CardContent>
@@ -1232,6 +1396,9 @@ export function InvoiceForm({
                       <div className="space-y-2">
                         <Label>Quantity</Label>
                         <Input
+                          ref={(el) => {
+                            quantityInputRefs.current[index] = el;
+                          }}
                           type="number"
                           step="0.01"
                           min="0"
@@ -1282,46 +1449,54 @@ export function InvoiceForm({
           {formData.client_id && (
             <div className="space-y-2 pb-4 border-b">
               <Label htmlFor="add-product">Add Product</Label>
-              <Select
-                value=""
-                onValueChange={(productId) => {
-                  if (productId) {
-                    handleProductToggle(productId, true);
+              <Popover
+                open={isQuickAddOpen}
+                onOpenChange={(open) => {
+                  setIsQuickAddOpen(open);
+                  if (!open) {
+                    setProductSearchValue("");
                   }
                 }}
               >
-                <SelectTrigger id="add-product">
-                  <SelectValue placeholder="Select a product to add..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {products
-                    .filter((p) => {
-                      // Show only products with pricing rules for this client
-                      const hasRule = clientPricingRules.some(
-                        (rule) =>
-                          rule.product_id === p.id &&
-                          rule.client_id === formData.client_id,
-                      );
-                      return hasRule;
-                    })
-                    .map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name}
-                      </SelectItem>
-                    ))}
-                  {products.filter((p) =>
-                    clientPricingRules.some(
-                      (rule) =>
-                        rule.product_id === p.id &&
-                        rule.client_id === formData.client_id,
-                    ),
-                  ).length === 0 && (
-                    <SelectItem value="_no_products" disabled>
-                      No products available with pricing rules
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="add-product"
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isQuickAddOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    Select a product to add...
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                  <Command>
+                    <CommandInput
+                      placeholder="Type product name..."
+                      value={productSearchValue}
+                      onValueChange={setProductSearchValue}
+                    />
+                    <CommandList>
+                      <CommandEmpty>
+                        {availableProducts.length === 0
+                          ? "No products available with pricing rules"
+                          : "No product found."}
+                      </CommandEmpty>
+                      {filteredProducts.map((product) => (
+                        <CommandItem
+                          key={product.id}
+                          value={product.name}
+                          onSelect={() => handleQuickAddProduct(product.id)}
+                        >
+                          {product.name}
+                        </CommandItem>
+                      ))}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               <p className="text-xs text-muted-foreground">
                 {items.length === 0
                   ? "Select products to add to this invoice"

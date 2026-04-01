@@ -1,6 +1,6 @@
 "use client"
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 
 interface Client {
   id: string
@@ -14,21 +14,20 @@ interface ClientSelectorProps {
 }
 
 export function ClientSelector({ clients, selectedClientId, onClientChange }: ClientSelectorProps) {
+  const options = [
+    { value: "all", label: "All Clients" },
+    ...clients.map((client) => ({ value: client.id, label: client.name })),
+  ]
+
   return (
     <div className="w-full md:w-64">
-      <Select value={selectedClientId || "all"} onValueChange={(value) => onClientChange(value === "all" ? null : value)}>
-        <SelectTrigger>
-          <SelectValue placeholder="Select a client..." />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Clients</SelectItem>
-          {clients.map((client) => (
-            <SelectItem key={client.id} value={client.id}>
-              {client.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={selectedClientId || "all"}
+        onValueChange={(value) => onClientChange(value === "all" ? null : value)}
+        options={options}
+        placeholder="Select a client..."
+        searchPlaceholder="Type client name..."
+      />
     </div>
   )
 }

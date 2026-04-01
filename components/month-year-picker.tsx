@@ -1,13 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -55,37 +49,36 @@ export function MonthYearPicker({ currentYear, currentMonth }: MonthYearPickerPr
     return { name, monthNum, disabled: isFuture }
   })
 
+  const monthOptions = availableMonths.map(({ name, monthNum, disabled }) => ({
+    value: String(monthNum),
+    label: name,
+    disabled,
+  }))
+
+  const yearOptions = years.map((y) => ({
+    value: String(y),
+    label: String(y),
+  }))
+
   return (
     <div className="flex items-center gap-2">
-      <Select value={String(currentMonth)} onValueChange={handleMonthChange}>
-        <SelectTrigger className="w-[130px] h-8 text-sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {availableMonths.map(({ name, monthNum, disabled }) => (
-            <SelectItem
-              key={monthNum}
-              value={String(monthNum)}
-              disabled={disabled}
-            >
-              {name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={String(currentMonth)}
+        onValueChange={handleMonthChange}
+        options={monthOptions}
+        placeholder="Month"
+        searchPlaceholder="Type month..."
+        triggerClassName="w-[130px] h-8 text-sm"
+      />
 
-      <Select value={String(currentYear)} onValueChange={handleYearChange}>
-        <SelectTrigger className="w-[90px] h-8 text-sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {years.map((y) => (
-            <SelectItem key={y} value={String(y)}>
-              {y}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={String(currentYear)}
+        onValueChange={handleYearChange}
+        options={yearOptions}
+        placeholder="Year"
+        searchPlaceholder="Type year..."
+        triggerClassName="w-[90px] h-8 text-sm"
+      />
     </div>
   )
 }

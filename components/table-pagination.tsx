@@ -10,7 +10,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 
 interface TablePaginationProps {
   currentPage: number
@@ -72,6 +72,10 @@ export function TablePagination({
   const pageNumbers = generatePageNumbers()
   const startItem = (currentPage - 1) * itemsPerPage + 1
   const endItem = Math.min(currentPage * itemsPerPage, totalItems)
+  const perPageOptions = ["5", "10", "25", "50"].map((value) => ({
+    value,
+    label: value,
+  }))
 
   return (
     <div className="flex flex-col gap-4 mt-6">
@@ -88,17 +92,15 @@ export function TablePagination({
             <label htmlFor="items-per-page" className="text-sm text-slate-600">
               Items per page:
             </label>
-            <Select defaultValue={itemsPerPage.toString()} onValueChange={(val) => onItemsPerPageChange(parseInt(val))}>
-              <SelectTrigger id="items-per-page" className="w-[80px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5</SelectItem>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="items-per-page"
+              value={itemsPerPage.toString()}
+              onValueChange={(val) => onItemsPerPageChange(parseInt(val))}
+              options={perPageOptions}
+              placeholder="Rows"
+              searchPlaceholder="Type rows..."
+              triggerClassName="w-[80px]"
+            />
           </div>
         )}
       </div>

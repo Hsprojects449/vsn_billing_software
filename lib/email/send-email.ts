@@ -9,15 +9,18 @@ interface SendEmailParams {
 
 export async function sendEmail({ to, subject, html, from }: SendEmailParams) {
   try {
-    // Use NEXT_PUBLIC_ prefix for Amplify SSR runtime compatibility
-    const resendApiKey = process.env.NEXT_PUBLIC_RESEND_API_KEY
-    const emailFrom = process.env.NEXT_PUBLIC_EMAIL_FROM
+    // Prefer server-only env vars, fallback to NEXT_PUBLIC for backward compatibility
+    const resendApiKey =
+      process.env.RESEND_API_KEY || process.env.NEXT_PUBLIC_RESEND_API_KEY
+    const emailFrom = process.env.EMAIL_FROM || process.env.NEXT_PUBLIC_EMAIL_FROM
 
     // Validate API key is set
     if (!resendApiKey) {
       console.error("[Email] RESEND_API_KEY is not configured")
       console.error("[Email] Env presence:", {
+        RESEND_API_KEY: !!process.env.RESEND_API_KEY,
         NEXT_PUBLIC_RESEND_API_KEY: !!process.env.NEXT_PUBLIC_RESEND_API_KEY,
+        EMAIL_FROM: !!process.env.EMAIL_FROM,
         NEXT_PUBLIC_EMAIL_FROM: !!process.env.NEXT_PUBLIC_EMAIL_FROM,
       })
       return { success: false, error: "Email service not configured: missing API key" }

@@ -8,7 +8,10 @@ export async function GET(request: Request) {
   try {
     // Verify authorization
     const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || "your-secret-key";
+    const cronSecret =
+      process.env.CRON_SECRET ||
+      process.env.NEXT_PUBLIC_CRON_SECRET ||
+      "your-secret-key";
 
     if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -16,11 +19,12 @@ export async function GET(request: Request) {
 
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
+    const requestOrigin = new URL(request.url).origin;
     const reportType = searchParams.get("type"); // daily, weekly, monthly, semi-annual, annual
 
     if (reportType === "daily") {
       // Daily report: send to super admin only
-      const result = await generateAndSendDailyReport();
+      const result = await generateAndSendDailyReport(requestOrigin);
       return NextResponse.json({ message: "Daily report processed", result });
     }
 
@@ -51,6 +55,7 @@ export async function GET(request: Request) {
         org.id,
         reportType || "weekly",
         org.report_email || org.email,
+        requestOrigin,
       );
       results.push({ organization: org.name, result });
     }
@@ -73,7 +78,7 @@ export async function GET(request: Request) {
 
 // ─── Daily report: replicates the Reports page content ───────────────────────
 
-async function generateAndSendDailyReport() {
+async function generateAndSendDailyReport(appBaseUrl: string) {
   const adminClient = createAdminClient();
 
   // Find the super_admin profile
@@ -116,6 +121,7 @@ async function generateAndSendDailyReport() {
   const today = new Date();
   const reportYear = today.getFullYear();
   const reportMonth = today.getMonth() + 1;
+  const todayDate = `${reportYear}-${String(reportMonth).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const monthStart = `${reportYear}-${String(reportMonth).padStart(2, "0")}-01`;
   const daysInMonth = new Date(reportYear, reportMonth, 0).getDate();
   const monthEnd = `${reportYear}-${String(reportMonth).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
@@ -139,7 +145,7 @@ async function generateAndSendDailyReport() {
 
     adminClient
       .from("invoices")
-      .select("id, client_id, total_amount, invoice_items(quantity)")
+      .select("id, client_id, issue_date, total_amount, invoice_items(quantity)")
       .eq("organization_id", superAdminProfile.organization_id)
       .gte("issue_date", monthStart)
       .lte("issue_date", monthEnd),
@@ -169,6 +175,8 @@ async function generateAndSendDailyReport() {
     id: string;
     name: string;
     sale: number;
+    todaySaleQty: number;
+    todaySaleValue: number;
     saleKgs: number;
     payments: number;
     outstanding: number;
@@ -181,6 +189,8 @@ async function generateAndSendDailyReport() {
       id: client.id,
       name: client.name,
       sale: 0,
+      todaySaleQty: 0,
+      todaySaleValue: 0,
       saleKgs: 0,
       payments: 0,
       outstanding: 0,
@@ -196,10 +206,15 @@ async function generateAndSendDailyReport() {
       (invoice.invoice_items as
         | { quantity: string | number | null }[]
         | null) ?? [];
-    row.saleKgs += items.reduce(
+    const invoiceQty = items.reduce(
       (sum, item) => sum + Number(item.quantity || 0),
       0,
     );
+    row.saleKgs += invoiceQty;
+    if (invoice.issue_date === todayDate) {
+      row.todaySaleQty += invoiceQty;
+      row.todaySaleValue += Number(invoice.total_amount || 0);
+    }
   }
 
   for (const invoice of allUnpaidInvoices) {
@@ -231,11 +246,21 @@ async function generateAndSendDailyReport() {
     (acc, r) => ({
       oldBal: acc.oldBal + r.oldBal,
       sale: acc.sale + r.sale,
+      todaySaleQty: acc.todaySaleQty + r.todaySaleQty,
+      todaySaleValue: acc.todaySaleValue + r.todaySaleValue,
       saleKgs: acc.saleKgs + r.saleKgs,
       payments: acc.payments + r.payments,
       outstanding: acc.outstanding + r.outstanding,
     }),
-    { oldBal: 0, sale: 0, saleKgs: 0, payments: 0, outstanding: 0 },
+    {
+      oldBal: 0,
+      sale: 0,
+      todaySaleQty: 0,
+      todaySaleValue: 0,
+      saleKgs: 0,
+      payments: 0,
+      outstanding: 0,
+    },
   );
 
   const html = generateDailyReportHtml({
@@ -247,7 +272,7 @@ async function generateAndSendDailyReport() {
   });
 
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_APP_URL}/api/email/send-report`,
+    `${appBaseUrl}/api/email/send-report`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -268,6 +293,7 @@ async function generateAndSendReport(
   organizationId: string,
   reportType: string,
   email: string,
+  appBaseUrl: string,
 ) {
   const supabase = await createClient();
 
@@ -322,7 +348,7 @@ async function generateAndSendReport(
 
   // Send via email service
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_APP_URL}/api/email/send-report`,
+    `${appBaseUrl}/api/email/send-report`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -397,6 +423,8 @@ function generateDailyReportHtml(data: {
     id: string;
     name: string;
     sale: number;
+    todaySaleQty: number;
+    todaySaleValue: number;
     saleKgs: number;
     payments: number;
     outstanding: number;
@@ -405,6 +433,8 @@ function generateDailyReportHtml(data: {
   totals: {
     oldBal: number;
     sale: number;
+    todaySaleQty: number;
+    todaySaleValue: number;
     saleKgs: number;
     payments: number;
     outstanding: number;
@@ -420,14 +450,16 @@ function generateDailyReportHtml(data: {
 
   const rowsHtml =
     rows.length === 0
-      ? `<tr><td colspan="7" style="text-align:center;padding:32px;color:#6b7280;">No activity found for ${monthLabel}.</td></tr>`
+      ? `<tr><td colspan="9" style="text-align:center;padding:32px;color:#6b7280;">No activity found for ${monthLabel}.</td></tr>`
       : rows
           .map(
             (r) => `
         <tr>
-          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:500;">${r.name}</td>
+          <td style="position:sticky;left:0;z-index:2;background:#ffffff;padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:500;min-width:180px;width:180px;white-space:nowrap;">${r.name}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${r.oldBal > 0 ? `₹${fmt(r.oldBal)}` : "—"}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${r.sale > 0 ? `₹${fmt(r.sale)}` : "—"}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${r.todaySaleQty > 0 ? r.todaySaleQty.toFixed(2) : "—"}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${r.todaySaleValue > 0 ? `₹${fmt(r.todaySaleValue)}` : "—"}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${r.saleKgs > 0 ? r.saleKgs.toFixed(2) : "—"}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${r.saleKgs > 0 ? `${(r.saleKgs / daysInMonth).toFixed(2)}` : "—"}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#15803d;">${r.payments > 0 ? `₹${fmt(r.payments)}` : "—"}</td>
@@ -441,9 +473,11 @@ function generateDailyReportHtml(data: {
     rows.length > 0
       ? `
     <tr style="background:#f3f4f6;font-weight:bold;border-top:2px solid #d1d5db;">
-      <td style="padding:10px 12px;">Total Sale</td>
+      <td style="position:sticky;left:0;z-index:2;background:#f3f4f6;padding:10px 12px;min-width:180px;width:180px;white-space:nowrap;">Total Sale</td>
       <td style="padding:10px 12px;text-align:right;">₹${fmt(totals.oldBal)}</td>
       <td style="padding:10px 12px;text-align:right;">₹${fmt(totals.sale)}</td>
+      <td style="padding:10px 12px;text-align:right;">${totals.todaySaleQty > 0 ? totals.todaySaleQty.toFixed(2) : "0"}</td>
+      <td style="padding:10px 12px;text-align:right;">₹${fmt(totals.todaySaleValue)}</td>
       <td style="padding:10px 12px;text-align:right;">${totals.saleKgs > 0 ? totals.saleKgs.toFixed(2) : "0"}</td>
       <td style="padding:10px 12px;text-align:right;">—</td>
       <td style="padding:10px 12px;text-align:right;color:#15803d;">₹${fmt(totals.payments)}</td>
@@ -468,21 +502,25 @@ function generateDailyReportHtml(data: {
 
         <div style="background:white;padding:12px 8px 16px;border-radius:0 0 8px 8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
           <div style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-          <table style="width:760px;border-collapse:collapse;font-size:11px;table-layout:fixed;">
+          <table style="width:1120px;border-collapse:collapse;font-size:11px;table-layout:fixed;">
             <thead>
               <tr style="background:#1e40af;color:white;">
-                <th style="padding:10px 12px;text-align:left;">Clients</th>
+                <th style="position:sticky;left:0;z-index:3;background:#1e40af;padding:10px 12px;text-align:left;min-width:180px;width:180px;white-space:nowrap;">Clients</th>
                 <th style="padding:10px 12px;text-align:right;">Old balance</th>
                 <th style="padding:10px 12px;text-align:right;">Sale</th>
+                <th style="padding:10px 12px;text-align:right;">Today's Qty</th>
+                <th style="padding:10px 12px;text-align:right;">Today's Value</th>
                 <th style="padding:10px 12px;text-align:right;">Sale in KG</th>
                 <th style="padding:10px 12px;text-align:right;">Average quantity / Day</th>
                 <th style="padding:10px 12px;text-align:right;">Payments</th>
                 <th style="padding:10px 12px;text-align:right;">Outstanding</th>
               </tr>
               <tr style="background:#eff6ff;color:#6b7280;font-size:11px;font-weight:normal;">
-                <th style="padding:6px 12px;text-align:left;font-weight:normal;"></th>
+                <th style="position:sticky;left:0;z-index:3;background:#eff6ff;padding:6px 12px;text-align:left;font-weight:normal;min-width:180px;width:180px;"></th>
                 <th style="padding:6px 12px;text-align:right;font-weight:normal;">Outstanding − Current month Sale</th>
                 <th style="padding:6px 12px;text-align:right;font-weight:normal;">Current Month Sale</th>
+                <th style="padding:6px 12px;text-align:right;font-weight:normal;">Today Qty</th>
+                <th style="padding:6px 12px;text-align:right;font-weight:normal;">Today Value</th>
                 <th style="padding:6px 12px;text-align:right;font-weight:normal;">Total Purchased Qty</th>
                 <th style="padding:6px 12px;text-align:right;font-weight:normal;">Total / ${daysInMonth} days</th>
                 <th style="padding:6px 12px;text-align:right;font-weight:normal;">Current Month Payments</th>

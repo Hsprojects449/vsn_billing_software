@@ -4,13 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -199,6 +193,17 @@ export function ClientPricingForm({
     ...cat,
     currentPrice: getPriceForCategoryOnDate(cat.id, today, history),
   }));
+  const clientOptions = clients.map((client) => ({
+    value: client.id,
+    label: client.name,
+  }));
+  const pricingRuleTypeOptions = [
+    { value: "discount_percentage", label: "Discount Percentage (%)" },
+    { value: "discount_flat", label: "Discount Flat Amount (₹)" },
+    { value: "multiplier", label: "Multiplier (e.g., 1.25)" },
+    { value: "flat_addition", label: "Flat Amount Addition (₹)" },
+    { value: "conditional_discount", label: "Conditional Discount (₹)" },
+  ];
 
   const normalizeNumericString = (value: unknown): string => {
     if (value === null || value === undefined) return "";
@@ -608,22 +613,15 @@ export function ClientPricingForm({
             <Label htmlFor="client_id">
               Client <span className="text-red-500">*</span>
             </Label>
-            <Select
+            <SearchableSelect
+              id="client_id"
               value={selectedClient}
               onValueChange={setSelectedClient}
+              options={clientOptions}
+              placeholder="Select a client"
+              searchPlaceholder="Type client name..."
               disabled={!!existingRule || (existingRules && existingRules.length > 0)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a client" />
-              </SelectTrigger>
-              <SelectContent>
-                {clients.map((client) => (
-                  <SelectItem key={client.id} value={client.id}>
-                    {client.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
             {!existingRule && selectedClient && (
               <p className="text-sm text-muted-foreground mt-2">
                 Configure pricing rules for products below. Enable products by
@@ -842,7 +840,7 @@ export function ClientPricingForm({
                           <Label>
                             Apply Rule <span className="text-red-500">*</span>
                           </Label>
-                          <Select
+                          <SearchableSelect
                             value={rule.price_rule_type}
                             onValueChange={(value) =>
                               updateProductRule({
@@ -850,28 +848,10 @@ export function ClientPricingForm({
                                 price_rule_value: "",
                               })
                             }
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select pricing rule" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="discount_percentage">
-                                Discount Percentage (%)
-                              </SelectItem>
-                              <SelectItem value="discount_flat">
-                                Discount Flat Amount (₹)
-                              </SelectItem>
-                              <SelectItem value="multiplier">
-                                Multiplier (e.g., 1.25)
-                              </SelectItem>
-                              <SelectItem value="flat_addition">
-                                Flat Amount Addition (₹)
-                              </SelectItem>
-                              <SelectItem value="conditional_discount">
-                                Conditional Discount (₹)
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
+                            options={pricingRuleTypeOptions}
+                            placeholder="Select pricing rule"
+                            searchPlaceholder="Type pricing rule..."
+                          />
                           <p className="text-xs text-muted-foreground">
                             {rule.price_rule_type === "discount_percentage" &&
                               "Enter percentage off category price (e.g., 10 for 10% off)"}

@@ -8,13 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/supabase/client";
@@ -106,6 +100,14 @@ export function ClientForm({ client }: ClientFormProps) {
     "UAE",
     "Other",
   ];
+  const dueTypeOptions = [
+    { value: "fixed_days", label: "Fixed Number of Days" },
+    { value: "end_of_month", label: "End of the billed month" },
+  ];
+  const countryOptions = countries.map((country) => ({
+    value: country,
+    label: country,
+  }));
 
   const handlePhoneChange = (value: string) => {
     const digitsOnly = value.replace(/\D/g, "").slice(0, 10);
@@ -305,24 +307,16 @@ export function ClientForm({ client }: ClientFormProps) {
 
             <div className="space-y-2">
               <Label htmlFor="due_days_type">Due Payment Type</Label>
-              <Select
+              <SearchableSelect
+                id="due_days_type"
                 value={formData.due_days_type}
                 onValueChange={(value) =>
                   setFormData({ ...formData, due_days_type: value })
                 }
-              >
-                <SelectTrigger id="due_days_type">
-                  <SelectValue placeholder="Select due days type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fixed_days">
-                    Fixed Number of Days
-                  </SelectItem>
-                  <SelectItem value="end_of_month">
-                    End of the billed month
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                options={dueTypeOptions}
+                placeholder="Select due days type"
+                searchPlaceholder="Type payment type..."
+              />
               <p className="text-xs text-muted-foreground">
                 {formData.due_days_type === "fixed_days"
                   ? "Invoice due date will be issue date + specified days"
@@ -397,23 +391,16 @@ export function ClientForm({ client }: ClientFormProps) {
 
             <div className="space-y-2">
               <Label htmlFor="country">Country</Label>
-              <Select
+              <SearchableSelect
+                id="country"
                 value={formData.country}
                 onValueChange={(value) =>
                   setFormData({ ...formData, country: value })
                 }
-              >
-                <SelectTrigger id="country">
-                  <SelectValue placeholder="Select country" />
-                </SelectTrigger>
-                <SelectContent>
-                  {countries.map((country) => (
-                    <SelectItem key={country} value={country}>
-                      {country}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={countryOptions}
+                placeholder="Select country"
+                searchPlaceholder="Type country..."
+              />
             </div>
           </div>
 

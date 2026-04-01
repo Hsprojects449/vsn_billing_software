@@ -7,13 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/supabase/client";
@@ -79,6 +73,30 @@ export function PaymentForm({
   const clientInvoices = selectedClientId
     ? invoices.filter((inv) => inv.client_id === selectedClientId)
     : invoices;
+  const invoiceOptions = invoices.map((invoice) => {
+    const invoiceBalance = Number(invoice.total_amount) - Number(invoice.amount_paid);
+    const clientName = Array.isArray(invoice.clients)
+      ? invoice.clients[0]?.name
+      : invoice.clients?.name;
+
+    return {
+      value: invoice.id,
+      label: `${invoice.invoice_number} - ${clientName || "Unknown client"} (₹${invoiceBalance.toFixed(2)} due)`,
+    };
+  });
+  const paymentMethodOptions = [
+    { value: "cash", label: "Cash" },
+    { value: "bank_transfer", label: "Bank Transfer" },
+    { value: "check", label: "Check" },
+    { value: "credit_card", label: "Credit Card" },
+    { value: "other", label: "Other" },
+  ];
+  const paymentStatusOptions = [
+    { value: "pending", label: "Pending" },
+    { value: "completed", label: "Completed" },
+    { value: "failed", label: "Failed" },
+    { value: "refunded", label: "Refunded" },
+  ];
 
   // Calculate client's total pending
   const clientTotalPending = clientInvoices.reduce((total, inv) => {
@@ -458,29 +476,16 @@ export function PaymentForm({
                 <Label htmlFor="invoice_id">
                   Invoice <span className="text-red-500">*</span>
                 </Label>
-                <Select
+                <SearchableSelect
+                  id="invoice_id"
                   value={formData.invoice_id}
                   onValueChange={(value) =>
                     setFormData({ ...formData, invoice_id: value, amount: "" })
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an invoice" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {invoices.map((invoice) => {
-                      const invoiceBalance =
-                        Number(invoice.total_amount) -
-                        Number(invoice.amount_paid);
-                      return (
-                        <SelectItem key={invoice.id} value={invoice.id}>
-                          {invoice.invoice_number} - {Array.isArray(invoice.clients) ? invoice.clients[0]?.name : invoice.clients?.name} (₹
-                          {invoiceBalance.toFixed(2)} due)
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
+                  options={invoiceOptions}
+                  placeholder="Select an invoice"
+                  searchPlaceholder="Type invoice number or client..."
+                />
               </div>
 
               {selectedInvoice && (
@@ -621,23 +626,16 @@ export function PaymentForm({
               <Label htmlFor="payment_method">
                 Payment Method <span className="text-red-500">*</span>
               </Label>
-              <Select
+              <SearchableSelect
+                id="payment_method"
                 value={formData.payment_method}
                 onValueChange={(value) =>
                   setFormData({ ...formData, payment_method: value })
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="check">Check</SelectItem>
-                  <SelectItem value="credit_card">Credit Card</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
+                options={paymentMethodOptions}
+                placeholder="Select payment method"
+                searchPlaceholder="Type payment method..."
+              />
             </div>
 
             <div className="space-y-2">
@@ -657,22 +655,16 @@ export function PaymentForm({
             <Label htmlFor="status">
               Payment Status <span className="text-red-500">*</span>
             </Label>
-            <Select
+            <SearchableSelect
+              id="status"
               value={formData.status}
               onValueChange={(value) =>
                 setFormData({ ...formData, status: value })
               }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-                <SelectItem value="refunded">Refunded</SelectItem>
-              </SelectContent>
-            </Select>
+              options={paymentStatusOptions}
+              placeholder="Select status"
+              searchPlaceholder="Type payment status..."
+            />
           </div>
 
           <div className="space-y-2">

@@ -16,6 +16,7 @@ export default async function NewInvoicePage() {
     pricingRulesResult,
     categoriesResult,
     historyResult,
+    latestInvoiceResult,
   ] = await Promise.all([
     supabase
       .from("clients")
@@ -33,6 +34,12 @@ export default async function NewInvoicePage() {
     supabase
       .from("price_category_history")
       .select("price_category_id, price, effective_date"),
+    supabase
+      .from("invoices")
+      .select("invoice_number")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   // Check if today's prices are set
@@ -92,6 +99,7 @@ export default async function NewInvoicePage() {
         clientPricingRules={pricingRulesResult.data || []}
         priceCategories={categoriesResult.data || []}
         priceHistory={historyResult.data || []}
+        lastInvoiceNumber={latestInvoiceResult.data?.invoice_number || null}
       />
     </div>
   );

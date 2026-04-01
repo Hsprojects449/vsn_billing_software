@@ -18,6 +18,8 @@ type ClientRow = {
   id: string
   name: string
   sale: number
+  todaySaleQty: number
+  todaySaleValue: number
   saleKgs: number
   payments: number
   outstanding: number
@@ -91,6 +93,14 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
             aVal = a.sale
             bVal = b.sale
             break
+          case "todaySaleQty":
+            aVal = a.todaySaleQty
+            bVal = b.todaySaleQty
+            break
+          case "todaySaleValue":
+            aVal = a.todaySaleValue
+            bVal = b.todaySaleValue
+            break
           case "saleKgs":
             aVal = a.saleKgs
             bVal = b.saleKgs
@@ -128,11 +138,21 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
         (acc, r) => ({
           oldBal: acc.oldBal + r.oldBal,
           sale: acc.sale + r.sale,
+          todaySaleQty: acc.todaySaleQty + r.todaySaleQty,
+          todaySaleValue: acc.todaySaleValue + r.todaySaleValue,
           saleKgs: acc.saleKgs + r.saleKgs,
           payments: acc.payments + r.payments,
           outstanding: acc.outstanding + r.outstanding,
         }),
-        { oldBal: 0, sale: 0, saleKgs: 0, payments: 0, outstanding: 0 },
+        {
+          oldBal: 0,
+          sale: 0,
+          todaySaleQty: 0,
+          todaySaleValue: 0,
+          saleKgs: 0,
+          payments: 0,
+          outstanding: 0,
+        },
       ),
     [processedRows],
   )
@@ -143,12 +163,12 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
   return (
     <div className="space-y-4">
       <div className="rounded-lg border bg-white overflow-x-auto">
-        <Table className="text-xs sm:text-sm">
+        <Table className="text-xs sm:text-sm min-w-[1180px]">
           <TableHeader>
             {/* Column headers — sortable */}
             <TableRow>
               <TableHead
-                className="px-2 sm:px-4 py-2 sm:py-3 cursor-pointer hover:bg-muted/50"
+                className="sticky left-0 z-20 bg-white border-r px-2 sm:px-4 py-2 sm:py-3 cursor-pointer hover:bg-muted/50 min-w-[180px] w-[180px]"
                 onClick={() => handleSort("hotel")}
               >
                 Clients <SortIcon column="hotel" />
@@ -164,6 +184,18 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
                 onClick={() => handleSort("sale")}
               >
                 Sale <SortIcon column="sale" />
+              </TableHead>
+              <TableHead
+                className="text-right px-2 sm:px-4 py-2 sm:py-3 cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("todaySaleQty")}
+              >
+                Today's sale - Qty <SortIcon column="todaySaleQty" />
+              </TableHead>
+              <TableHead
+                className="text-right px-2 sm:px-4 py-2 sm:py-3 cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("todaySaleValue")}
+              >
+                Today's sale - Value <SortIcon column="todaySaleValue" />
               </TableHead>
               <TableHead
                 className="text-right px-2 sm:px-4 py-2 sm:py-3 cursor-pointer hover:bg-muted/50"
@@ -193,7 +225,7 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
 
             {/* Filter / sub-header row */}
             <TableRow>
-              <TableHead className="px-2 sm:px-4 py-1.5">
+              <TableHead className="sticky left-0 z-20 bg-white border-r px-2 sm:px-4 py-1.5 min-w-[180px] w-[180px]">
                 <Input
                   placeholder="Filter clients…"
                   value={filters.hotel}
@@ -206,6 +238,12 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
               </TableHead>
               <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground text-xs">
                 Current month sale
+              </TableHead>
+              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground text-xs">
+                Current day qty
+              </TableHead>
+              <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground text-xs">
+                Current day sale value
               </TableHead>
               <TableHead className="text-right px-2 sm:px-4 py-1.5 font-normal text-muted-foreground text-xs">
                 Total purchased quantity 
@@ -228,7 +266,7 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
             {pagination.paginatedItems.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={9}
                   className="text-center text-muted-foreground py-16 px-2 sm:px-4"
                 >
                   {filters.hotel
@@ -239,7 +277,7 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
             ) : (
               pagination.paginatedItems.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell className="font-medium px-2 sm:px-4 py-2 sm:py-3">
+                  <TableCell className="sticky left-0 z-10 bg-white border-r font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[180px] w-[180px] whitespace-nowrap">
                     {row.name}
                   </TableCell>
                   <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
@@ -247,6 +285,12 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
                   </TableCell>
                   <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
                     {row.sale > 0 ? `₹${fmt(row.sale)}` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                    {row.todaySaleQty > 0 ? row.todaySaleQty.toFixed(2) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                    {row.todaySaleValue > 0 ? `₹${fmt(row.todaySaleValue)}` : "—"}
                   </TableCell>
                   <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
                     {row.saleKgs > 0 ? row.saleKgs.toFixed(2) : "—"}
@@ -273,13 +317,21 @@ export function ReportsTable({ rows, daysInMonth, monthLabel }: ReportsTableProp
 
             {/* Totals row — based on all filtered rows (not just current page) */}
             {processedRows.length > 0 && (
-              <TableRow className="border-t-2 font-bold bg-muted/30">
-                <TableCell className="px-2 sm:px-4 py-2 sm:py-3">Total Sale</TableCell>
+              <TableRow className="border-t-2 font-bold bg-muted">
+                <TableCell className="sticky left-0 z-30 bg-muted border-r px-2 sm:px-4 py-2 sm:py-3 min-w-[180px] w-[180px] whitespace-nowrap">
+                  Total Sale
+                </TableCell>
                 <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
                   ₹{fmt(totals.oldBal)}
                 </TableCell>
                 <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
                   ₹{fmt(totals.sale)}
+                </TableCell>
+                <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                  {totals.todaySaleQty > 0 ? totals.todaySaleQty.toFixed(2) : "0"}
+                </TableCell>
+                <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                  ₹{fmt(totals.todaySaleValue)}
                 </TableCell>
                 <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
                   {totals.saleKgs > 0 ? totals.saleKgs.toFixed(2) : "0"}

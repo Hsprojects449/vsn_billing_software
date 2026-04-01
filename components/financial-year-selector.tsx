@@ -1,6 +1,6 @@
 "use client"
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 
 interface FinancialYearSelectorProps {
   selectedYear: string
@@ -43,19 +43,19 @@ export function generateFinancialYears(count: number = 5): string[] {
 
 export function FinancialYearSelector({ selectedYear, onYearChange }: FinancialYearSelectorProps) {
   const financialYears = generateFinancialYears(10) // Last 10 years
+  const yearOptions = financialYears.map((fy) => ({
+    value: fy,
+    label: `FY ${fy}`,
+  }))
   
   return (
-    <Select value={selectedYear} onValueChange={onYearChange}>
-      <SelectTrigger className="w-[180px]">
-        <SelectValue placeholder="Select FY" />
-      </SelectTrigger>
-      <SelectContent>
-        {financialYears.map((fy) => (
-          <SelectItem key={fy} value={fy}>
-            FY {fy}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <SearchableSelect
+      value={selectedYear}
+      onValueChange={onYearChange}
+      options={yearOptions}
+      placeholder="Select FY"
+      searchPlaceholder="Type financial year..."
+      triggerClassName="w-[180px]"
+    />
   )
 }

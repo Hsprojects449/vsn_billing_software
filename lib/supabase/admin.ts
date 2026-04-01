@@ -1,15 +1,20 @@
 import { createClient } from "@supabase/supabase-js"
 
 export function createAdminClient() {
-  // Use NEXT_PUBLIC_ prefix for Amplify SSR runtime compatibility
+  // Prefer server-only key, fallback to NEXT_PUBLIC for backward compatibility
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceRoleKey = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
+  const supabaseServiceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
 
   // Better error message with debugging info (does not print secret values)
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     const missingVars = []
     if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL")
-    if (!supabaseServiceRoleKey) missingVars.push("SUPABASE_SERVICE_ROLE_KEY")
+    if (!supabaseServiceRoleKey)
+      missingVars.push(
+        "SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY",
+      )
 
     const errorMsg = `Missing Supabase environment variables: ${missingVars.join(", ")}`
     console.error(errorMsg)

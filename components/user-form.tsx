@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { createUser, updateUser } from "@/app/actions/create-user"
 import { useToast } from "@/hooks/use-toast"
 
@@ -40,6 +40,12 @@ export function UserForm({ organizations, initialData }: UserFormProps) {
     organization_id: initialData?.organization_id || "",
     is_active: initialData?.is_active ?? true,
   })
+
+  const roleOptions = [
+    { value: "super_admin", label: "Super Admin" },
+    { value: "admin", label: "Admin" },
+    { value: "accountant", label: "Accountant" },
+  ]
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -131,16 +137,14 @@ export function UserForm({ organizations, initialData }: UserFormProps) {
 
         <div>
           <Label htmlFor="role">Role</Label>
-          <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="super_admin">Super Admin</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="accountant">Accountant</SelectItem>
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={formData.role}
+            onValueChange={(value) => setFormData({ ...formData, role: value })}
+            options={roleOptions}
+            placeholder="Select role"
+            searchPlaceholder="Type role..."
+            id="role"
+          />
           <p className="text-xs text-muted-foreground mt-1">
             Super Admin: Full access | Admin: View-only for super admin areas, full access where accountants have access | Accountant: Limited to invoices, products, prices, payments, clients
           </p>
