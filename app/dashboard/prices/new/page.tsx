@@ -22,6 +22,10 @@ export default async function NewPricePage() {
     redirect("/dashboard/clients")
   }
 
+  if (profile.role === "accountant") {
+    redirect("/dashboard/gst-filings")
+  }
+
   // Get all price categories
   const { data: priceCategories } = await supabase
     .from("price_categories")

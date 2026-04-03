@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-import { exportToCSV, ExportColumn, getTimestamp } from "@/lib/export-utils"
+import { exportToCSVAsync, ExportColumn, getTimestamp } from "@/lib/export-utils"
 import { Input } from "@/components/ui/input"
 
 interface PriceCategory {
@@ -347,7 +347,7 @@ export function PricesTable({ priceCategories, priceHistory }: PricesTableProps)
     )
   }
 
-  const handleExport = () => {
+  const handleExport = async () => {
     // Apply the same filters that are applied to the displayed data
     const filteredHistory = priceHistory.filter((p) => {
       const cat = priceCategories.find((c) => c.id === p.price_category_id)
@@ -380,7 +380,7 @@ export function PricesTable({ priceCategories, priceHistory }: PricesTableProps)
       },
     ]
 
-    exportToCSV(enrichedData, columns, `price-history-${getTimestamp()}.csv`)
+    await exportToCSVAsync(enrichedData, columns, `price-history-${getTimestamp()}.csv`)
     toast({
       variant: "success",
       title: "Exported",

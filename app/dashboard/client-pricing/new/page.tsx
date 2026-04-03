@@ -15,14 +15,14 @@ export default async function NewClientPricingPage() {
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
 
-  if (profile?.role !== "super_admin") {
+  if (!profile || (profile.role !== "super_admin" && profile.role !== "admin" && profile.role !== "billing_executive")) {
     redirect("/dashboard")
   }
 
   // Get clients and products for the form
   const [clientsResult, productsResult] = await Promise.all([
     supabase.from("clients").select("id, name").order("name"),
-    supabase.from("products").select("id, name, paper_price").eq("is_active", true).order("name"),
+    supabase.from("products").select("id, name, paper_price, operator_price").eq("is_active", true).order("name"),
   ])
 
   return (

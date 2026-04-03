@@ -57,7 +57,9 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role === "accountant") redirect("/dashboard/invoices");
+  if (profile?.role === "accountant") redirect("/dashboard/gst-filings");
+  if (profile?.role === "admin") redirect("/dashboard/clients");
+  if (profile?.role === "billing_executive") redirect("/dashboard/invoices");
 
   const fyRange = getCurrentFinancialYearRange();
 
@@ -97,29 +99,13 @@ export default async function DashboardPage() {
 
   // Core KPIs
   const totalRevenue = fyPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const totalInvoiced = fyInvoices.reduce(
-    (sum, inv) => sum + Number(inv.total_amount),
-    0,
-  );
-  const totalOutstanding = fyInvoices
-    .filter((inv) => inv.status !== "paid" && inv.status !== "cancelled")
-    .reduce(
-      (sum, inv) => sum + (Number(inv.total_amount) - Number(inv.amount_paid)),
-      0,
-    );
 
-  // Invoice status counts
-  const paidInvoices = fyInvoices.filter((inv) => inv.status === "paid").length;
-  const overdueInvoices = fyInvoices.filter((inv) => {
-    const balance = Number(inv.total_amount) - Number(inv.amount_paid);
-    const daysOverdue = Math.floor(
-      (today.getTime() - new Date(inv.due_date).getTime()) / msInDay,
-    );
-    return balance > 0 && daysOverdue > 0;
-  }).length;
-  const draftInvoices = fyInvoices.filter(
-    (inv) => inv.status === "draft",
-  ).length;
+  let totalInvoiced = 0;
+  let totalOutstanding = 0;
+  let paidInvoices = 0;
+  let overdueInvoices = 0;
+  let draftInvoices = 0;
+  let hasOverdueInvoices = false;
 
   // Overdue breakdown by days
   const overdueBreakdown: Record<
@@ -133,12 +119,30 @@ export default async function DashboardPage() {
     "60+": { count: 0, invoices: [] },
   };
 
-  fyInvoices.forEach((inv) => {
-    const balance = Number(inv.total_amount) - Number(inv.amount_paid);
+  for (const inv of fyInvoices) {
+    const totalAmount = Number(inv.total_amount);
+    const amountPaid = Number(inv.amount_paid);
+    const balance = totalAmount - amountPaid;
+    totalInvoiced += totalAmount;
+
+    if (inv.status !== "paid" && inv.status !== "cancelled") {
+      totalOutstanding += balance;
+    }
+
+    if (inv.status === "paid") {
+      paidInvoices += 1;
+    }
+
+    if (inv.status === "draft") {
+      draftInvoices += 1;
+    }
+
     const daysOverdue = Math.floor(
       (today.getTime() - new Date(inv.due_date).getTime()) / msInDay,
     );
     if (balance > 0 && daysOverdue > 0) {
+      overdueInvoices += 1;
+      hasOverdueInvoices = true;
       if (daysOverdue <= 7) {
         overdueBreakdown["0-7"].invoices.push(inv);
         overdueBreakdown["0-7"].count++;
@@ -156,7 +160,7 @@ export default async function DashboardPage() {
         overdueBreakdown["60+"].count++;
       }
     }
-  });
+  }
 
   // Top clients by revenue
   const clientRevenue = fyInvoices.reduce(
@@ -380,15 +384,7 @@ export default async function DashboardPage() {
                 <CardTitle>Overdue Invoices Breakdown</CardTitle>
               </CardHeader>
               <CardContent>
-                {fyInvoices.filter((inv) => {
-                  const balance =
-                    Number(inv.total_amount) - Number(inv.amount_paid);
-                  const daysOverdue = Math.floor(
-                    (today.getTime() - new Date(inv.due_date).getTime()) /
-                      msInDay,
-                  );
-                  return balance > 0 && daysOverdue > 0;
-                }).length === 0 ? (
+                {!hasOverdueInvoices ? (
                   <p className="text-center text-muted-foreground py-8">
                     No overdue invoices — great job!
                   </p>

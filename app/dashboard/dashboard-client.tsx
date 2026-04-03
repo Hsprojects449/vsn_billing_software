@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import { ClientSelector } from "@/components/client-selector";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -33,80 +33,83 @@ interface DashboardClientProps {
 export function DashboardClient({ clients, invoices }: DashboardClientProps) {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
 
-  const filteredInvoices = selectedClientId
-    ? invoices.filter((invoice) => invoice.client_id === selectedClientId)
-    : invoices;
+  const filteredInvoices = useMemo(
+    () =>
+      selectedClientId
+        ? invoices.filter((invoice) => invoice.client_id === selectedClientId)
+        : invoices,
+    [selectedClientId, invoices],
+  );
 
-  // Calculate total pending amount for selected client
-  const calculateTotalPending = useCallback(() => {
-    return filteredInvoices.reduce((total, invoice) => {
-      const pending =
-        Number(invoice.total_amount) - Number(invoice.amount_paid);
-      return total + pending;
-    }, 0);
-  }, [filteredInvoices]);
+  const { totalPending, invoiceStats, overdueBuckets, overdueAmounts } = useMemo(() => {
+    const msInDay = 1000 * 60 * 60 * 24;
+    const today = new Date();
+    let totalPendingAmount = 0;
+    let paid = 0;
+    let partiallyPaid = 0;
+    let unpaid = 0;
+    let overdue = 0;
+    const buckets = {
+      week1: 0,
+      week2: 0,
+      week3: 0,
+      week3plus: 0,
+    };
+    const amounts = {
+      week1: 0,
+      week2: 0,
+      week3: 0,
+      week3plus: 0,
+    };
 
-  const totalPending = calculateTotalPending();
+    for (const invoice of filteredInvoices) {
+      const totalAmount = Number(invoice.total_amount);
+      const amountPaid = Number(invoice.amount_paid);
+      const balance = totalAmount - amountPaid;
+      totalPendingAmount += balance;
 
-  // Count invoice statuses
-  const invoiceStats = {
-    total: filteredInvoices.length,
-    paid: filteredInvoices.filter((i) => i.status === "paid").length,
-    partiallyPaid: filteredInvoices.filter((i) => i.status === "partially_paid")
-      .length,
-    unpaid: filteredInvoices.filter(
-      (i) => i.status === "draft" || i.status === "recorded",
-    ).length,
-    // Overdue computed dynamically using full days overdue (consistency with chips and table)
-    overdue: filteredInvoices.filter((i) => {
-      const balance = Number(i.total_amount) - Number(i.amount_paid);
-      const dueDate = new Date(i.due_date);
-      const msInDayLocal = 1000 * 60 * 60 * 24;
-      const todayLocal = new Date();
-      const daysOverdueLocal = Math.floor(
-        (todayLocal.getTime() - dueDate.getTime()) / msInDayLocal,
+      if (invoice.status === "paid") {
+        paid += 1;
+      } else if (invoice.status === "partially_paid") {
+        partiallyPaid += 1;
+      } else if (invoice.status === "draft" || invoice.status === "recorded") {
+        unpaid += 1;
+      }
+
+      const daysOverdue = Math.floor(
+        (today.getTime() - new Date(invoice.due_date).getTime()) / msInDay,
       );
-      return balance > 0 && daysOverdueLocal > 0;
-    }).length,
-  };
-
-  const msInDay = 1000 * 60 * 60 * 24;
-  const today = new Date();
-  const overdueBuckets = {
-    week1: 0,
-    week2: 0,
-    week3: 0,
-    week3plus: 0,
-  };
-  const overdueAmounts = {
-    week1: 0,
-    week2: 0,
-    week3: 0,
-    week3plus: 0,
-  };
-
-  filteredInvoices.forEach((invoice) => {
-    const dueDate = new Date(invoice.due_date);
-    const daysOverdue = Math.floor(
-      (today.getTime() - dueDate.getTime()) / msInDay,
-    );
-    const balance = Number(invoice.total_amount) - Number(invoice.amount_paid);
-    if (balance > 0 && daysOverdue > 0) {
-      if (daysOverdue <= 7) {
-        overdueBuckets.week1 += 1;
-        overdueAmounts.week1 += balance;
-      } else if (daysOverdue <= 14) {
-        overdueBuckets.week2 += 1;
-        overdueAmounts.week2 += balance;
-      } else if (daysOverdue <= 21) {
-        overdueBuckets.week3 += 1;
-        overdueAmounts.week3 += balance;
-      } else {
-        overdueBuckets.week3plus += 1;
-        overdueAmounts.week3plus += balance;
+      if (balance > 0 && daysOverdue > 0) {
+        overdue += 1;
+        if (daysOverdue <= 7) {
+          buckets.week1 += 1;
+          amounts.week1 += balance;
+        } else if (daysOverdue <= 14) {
+          buckets.week2 += 1;
+          amounts.week2 += balance;
+        } else if (daysOverdue <= 21) {
+          buckets.week3 += 1;
+          amounts.week3 += balance;
+        } else {
+          buckets.week3plus += 1;
+          amounts.week3plus += balance;
+        }
       }
     }
-  });
+
+    return {
+      totalPending: totalPendingAmount,
+      invoiceStats: {
+        total: filteredInvoices.length,
+        paid,
+        partiallyPaid,
+        unpaid,
+        overdue,
+      },
+      overdueBuckets: buckets,
+      overdueAmounts: amounts,
+    };
+  }, [filteredInvoices]);
 
   return (
     <div className="space-y-6 pt-6">

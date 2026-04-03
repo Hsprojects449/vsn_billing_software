@@ -8,6 +8,46 @@ export interface ExportColumn {
   formatter?: (value: any) => string
 }
 
+const DEFAULT_CSV_CHUNK_SIZE = 1500
+const DEFAULT_PDF_YIELD_EVERY = 250
+
+function escapeCsvCell(value: unknown): string {
+  const stringValue = String(value ?? '')
+  return `"${stringValue.replace(/"/g, '""')}"`
+}
+
+function buildCsvRow(item: any, columns: ExportColumn[]): string {
+  return columns
+    .map(col => {
+      let value = item[col.key]
+      if (col.formatter) {
+        value = col.formatter(value)
+      }
+      return escapeCsvCell(value)
+    })
+    .join(',')
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+
+  link.setAttribute('href', url)
+  link.setAttribute('download', filename)
+  link.style.visibility = 'hidden'
+
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+
+  // Revoke object URL to avoid memory growth after repeated exports
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function yieldToMainThread(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 /**
  * Export data array to CSV format (compatible with Excel)
  * @param data Array of objects to export
@@ -23,39 +63,47 @@ export function exportToCSV(
     return
   }
 
-  // Create header row
-  const headers = columns.map(col => `"${col.label}"`).join(',')
+  const headers = columns.map(col => escapeCsvCell(col.label)).join(',')
+  const rows = new Array<string>(data.length + 1)
+  rows[0] = headers
 
-  // Create data rows
-  const rows = data.map(item =>
-    columns
-      .map(col => {
-        let value = item[col.key]
-        if (col.formatter) {
-          value = col.formatter(value)
-        }
-        // Escape quotes and wrap in quotes
-        const stringValue = String(value ?? '')
-        return `"${stringValue.replace(/"/g, '""')}"`
-      })
-      .join(',')
-  )
+  for (let i = 0; i < data.length; i++) {
+    rows[i + 1] = buildCsvRow(data[i], columns)
+  }
 
-  // Combine header and rows
-  const csv = [headers, ...rows].join('\n')
+  const csv = rows.join('\n')
 
-  // Create blob and download
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const link = document.createElement('a')
-  const url = URL.createObjectURL(blob)
+  downloadBlob(blob, filename)
+}
 
-  link.setAttribute('href', url)
-  link.setAttribute('download', filename)
-  link.style.visibility = 'hidden'
+/**
+ * Export data array to CSV in chunks to keep the UI responsive for large datasets.
+ */
+export async function exportToCSVAsync(
+  data: any[],
+  columns: ExportColumn[],
+  filename: string = 'export.csv',
+  chunkSize: number = DEFAULT_CSV_CHUNK_SIZE,
+) {
+  if (data.length === 0) {
+    return
+  }
 
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+  const normalizedChunkSize = Math.max(200, chunkSize)
+  const headers = columns.map(col => escapeCsvCell(col.label)).join(',')
+  const rows: string[] = [headers]
+
+  for (let i = 0; i < data.length; i++) {
+    rows.push(buildCsvRow(data[i], columns))
+    if ((i + 1) % normalizedChunkSize === 0) {
+      await yieldToMainThread()
+    }
+  }
+
+  const csv = rows.join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  downloadBlob(blob, filename)
 }
 
 /**
@@ -73,16 +121,7 @@ export function exportToJSON(
 
   const json = JSON.stringify(data, null, 2)
   const blob = new Blob([json], { type: 'application/json;charset=utf-8;' })
-  const link = document.createElement('a')
-  const url = URL.createObjectURL(blob)
-
-  link.setAttribute('href', url)
-  link.setAttribute('download', filename)
-  link.style.visibility = 'hidden'
-
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+  downloadBlob(blob, filename)
 }
 
 /**
@@ -136,7 +175,8 @@ export async function exportToPDF(
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7)
 
-  data.forEach((item, rowIndex) => {
+  for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+    const item = data[rowIndex]
     if (y + rowHeight > pageHeight - margin) {
       doc.addPage()
       y = 18
@@ -155,7 +195,11 @@ export async function exportToPDF(
     })
 
     y += rowHeight
-  })
+
+    if ((rowIndex + 1) % DEFAULT_PDF_YIELD_EVERY === 0) {
+      await yieldToMainThread()
+    }
+  }
 
   // Bottom border line
   doc.setDrawColor(180, 180, 180)

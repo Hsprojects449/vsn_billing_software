@@ -16,7 +16,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { exportToCSV, ExportColumn, getTimestamp } from "@/lib/export-utils";
+import { exportToCSVAsync, ExportColumn, getTimestamp } from "@/lib/export-utils";
 import { usePagination } from "@/hooks/use-pagination";
 import { TablePagination } from "@/components/table-pagination";
 
@@ -116,7 +116,7 @@ export function OperatorInvoicesTable({ invoices }: OperatorInvoicesTableProps) 
     setDeleteDialogOpen(false);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const columns: ExportColumn[] = [
       { key: "invoice_number", label: "Invoice No." },
       { key: "operators", label: "Operator", formatter: (v) => (v as { name: string } | null)?.name || "" },
@@ -128,7 +128,7 @@ export function OperatorInvoicesTable({ invoices }: OperatorInvoicesTableProps) 
       { key: "amount_paid", label: "Amount Paid" },
       { key: "status", label: "Status" },
     ];
-    exportToCSV(invoices, columns, `operator-invoices-${getTimestamp()}.csv`);
+    await exportToCSVAsync(invoices, columns, `operator-invoices-${getTimestamp()}.csv`);
     toast({ variant: "success", title: "Exported", description: `${invoices.length} invoices exported.` });
   };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ClientSelector } from "@/components/client-selector";
 import { QuotationsTable } from "@/components/quotations-table";
 import {
@@ -39,18 +39,19 @@ export function QuotationsPageClient({ clients, quotations, userRole }: Quotatio
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  const filtered = quotations.filter((q) => {
+  const fyRange = useMemo(() => getFinancialYearDateRange(selectedFY), [selectedFY]);
+
+  const filtered = useMemo(() => quotations.filter((q) => {
     if (selectedClientId && q.client_id !== selectedClientId) return false;
 
-    const { start, end } = getFinancialYearDateRange(selectedFY);
     const issueDate = q.issue_date;
-    if (issueDate < start || issueDate > end) return false;
+    if (issueDate < fyRange.start || issueDate > fyRange.end) return false;
 
     if (fromDate && issueDate < fromDate) return false;
     if (toDate && issueDate > toDate) return false;
 
     return true;
-  });
+  }), [quotations, selectedClientId, fyRange, fromDate, toDate]);
 
   return (
     <div className="space-y-6">
@@ -59,11 +60,13 @@ export function QuotationsPageClient({ clients, quotations, userRole }: Quotatio
         userRole={userRole}
         toolbarLeft={
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">FY:</span>
-            <FinancialYearSelector
-              selectedYear={selectedFY}
-              onYearChange={setSelectedFY}
-            />
+            <div className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap">
+              <span className="text-sm font-medium text-muted-foreground">FY:</span>
+              <FinancialYearSelector
+                selectedYear={selectedFY}
+                onYearChange={setSelectedFY}
+              />
+            </div>
             <span className="text-sm font-medium text-muted-foreground">Client:</span>
             <ClientSelector
               clients={clients}

@@ -25,7 +25,7 @@ export default async function ReportsPage({
     .eq("id", user.id)
     .single()
 
-  if (!profile || (profile.role !== "super_admin" && profile.role !== "admin")) {
+  if (!profile || profile.role !== "super_admin") {
     redirect("/dashboard")
   }
 
@@ -45,7 +45,7 @@ export default async function ReportsPage({
   })
 
   // Fetch all required data in parallel
-  const [clientsResult, currentMonthInvoicesResult, allUnpaidInvoicesResult, currentMonthPaymentsResult, pricingRulesResult] =
+  const [clientsResult, currentMonthInvoicesResult, allUnpaidInvoicesResult, currentMonthPaymentsResult, productsResult] =
     await Promise.all([
       supabase.from("clients").select("id, name").order("name", { ascending: true }),
 
@@ -68,21 +68,20 @@ export default async function ReportsPage({
         .lte("payment_date", monthEnd),
 
       supabase
-        .from("client_product_pricing")
-        .select("client_id, product_id, operator_price, products(paper_price)"),
+        .from("products")
+        .select("id, operator_price, paper_price"),
     ])
 
   const clients = clientsResult.data || []
   const currentMonthInvoices = currentMonthInvoicesResult.data || []
   const allUnpaidInvoices = allUnpaidInvoicesResult.data || []
   const currentMonthPayments = currentMonthPaymentsResult.data || []
-  const pricingRules = pricingRulesResult.data || []
+  const products = productsResult.data || []
 
-  const pricingMap = new Map<string, number>()
-  for (const rule of pricingRules) {
-    const key = `${rule.client_id}::${rule.product_id}`
-    const fallbackPaperPrice = Number((rule.products as { paper_price: string } | null)?.paper_price || 0)
-    pricingMap.set(key, Number(rule.operator_price ?? fallbackPaperPrice))
+  const productOperatorPriceMap = new Map<string, number>()
+  for (const product of products) {
+    const fallbackPaperPrice = Number(product.paper_price || 0)
+    productOperatorPriceMap.set(product.id, Number(product.operator_price ?? fallbackPaperPrice))
   }
 
   type ClientRow = {
@@ -128,8 +127,7 @@ export default async function ReportsPage({
         | null
     )?.reduce((sum, item) => {
       if (!item.product_id) return sum
-      const priceKey = `${invoice.client_id}::${item.product_id}`
-      const operatorPrice = pricingMap.get(priceKey) ?? 0
+      const operatorPrice = productOperatorPriceMap.get(item.product_id) ?? 0
       return sum + Number(item.quantity || 0) * operatorPrice
     }, 0) ?? 0
 

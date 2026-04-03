@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { Check, ChevronDown, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Client {
@@ -63,8 +63,9 @@ interface InvoiceFormProps {
   products: Product[];
   clientPricingRules: ClientProductPricing[];
   lastInvoiceNumber?: string | null;
+  conversionQuotationId?: string | null;
   initialInvoice?: {
-    id: string;
+    id?: string;
     client_id: string;
     issue_date: string;
     due_date: string;
@@ -128,6 +129,7 @@ export function InvoiceForm({
   products,
   clientPricingRules,
   lastInvoiceNumber,
+  conversionQuotationId,
   initialInvoice,
   initialItems,
 }: InvoiceFormProps) {
@@ -230,6 +232,30 @@ export function InvoiceForm({
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [productSearchValue, setProductSearchValue] = useState("");
 
+  const clientsById = useMemo(() => {
+    const lookup = new Map<string, Client>();
+    for (const client of clients) {
+      lookup.set(client.id, client);
+    }
+    return lookup;
+  }, [clients]);
+
+  const productsById = useMemo(() => {
+    const lookup = new Map<string, Product>();
+    for (const product of products) {
+      lookup.set(product.id, product);
+    }
+    return lookup;
+  }, [products]);
+
+  const pricingRuleByClientProduct = useMemo(() => {
+    const lookup = new Map<string, ClientProductPricing>();
+    for (const rule of clientPricingRules) {
+      lookup.set(`${rule.client_id}:${rule.product_id}`, rule);
+    }
+    return lookup;
+  }, [clientPricingRules]);
+
   // ensure per-bird settings from client are loaded when form initialises
   useEffect(() => {
     if (formData.client_id) {
@@ -303,8 +329,8 @@ export function InvoiceForm({
   const getPricingRuleInfo = (productId: string, clientId: string) => {
     if (!clientId || !productId) return null;
 
-    const pricingRule = clientPricingRules.find(
-      (rule) => rule.product_id === productId && rule.client_id === clientId,
+    const pricingRule = pricingRuleByClientProduct.get(
+      `${clientId}:${productId}`,
     );
 
     if (pricingRule) {
@@ -334,30 +360,18 @@ export function InvoiceForm({
     return null;
   };
 
-  // Check if item at given index is an exact duplicate (same product and same quantity) with any other item
-  const isExactDuplicate = (index: number) => {
-    if (index < 0 || index >= items.length) return false;
-    const item = items[index];
-    return items.some(
-      (other, otherIndex) =>
-        otherIndex !== index &&
-        other.product_id === item.product_id &&
-        (other.quantity ?? null) === (item.quantity ?? null),
-    );
-  };
-
   // Function to calculate price based on client-specific pricing rules
   const calculateClientPrice = (
     productId: string,
     clientId: string,
   ): number => {
-    const product = products.find((p) => p.id === productId);
+    const product = productsById.get(productId);
     if (!product) return 0;
 
     // Check if there's a client-specific pricing rule
     if (clientId) {
-      const pricingRule = clientPricingRules.find(
-        (rule) => rule.product_id === productId && rule.client_id === clientId,
+      const pricingRule = pricingRuleByClientProduct.get(
+        `${clientId}:${productId}`,
       );
 
       if (pricingRule) {
@@ -417,7 +431,7 @@ export function InvoiceForm({
     productId: string,
     clientId: string,
   ) => {
-    const product = products.find((p) => p.id === productId);
+    const product = productsById.get(productId);
     if (!product) return null;
 
     let basePrice = Number(product.paper_price || product.unit_price);
@@ -426,10 +440,7 @@ export function InvoiceForm({
     let ruleValueDisplay: string | null = null;
 
     const pricingRule = clientId
-      ? clientPricingRules.find(
-          (rule) =>
-            rule.product_id === productId && rule.client_id === clientId,
-        )
+      ? pricingRuleByClientProduct.get(`${clientId}:${productId}`)
       : null;
 
     if (pricingRule) {
@@ -535,7 +546,7 @@ export function InvoiceForm({
   // Recalculate all item prices when client changes; leave selection untouched
 
   const handleClientChange = (clientId: string) => {
-    const client = clients.find((c) => c.id === clientId);
+    const client = clientsById.get(clientId);
     const days = client?.due_days ?? 30;
     const daysType = client?.due_days_type ?? "fixed_days";
     const newDue = computeDueDateByType(formData.issue_date, daysType, days);
@@ -652,16 +663,14 @@ export function InvoiceForm({
       if (enabled) {
         // Prevent enabling selection if no pricing rule exists for the selected client
         if (formData.client_id) {
-          const hasRule = clientPricingRules.some(
-            (rule) =>
-              rule.product_id === productId &&
-              rule.client_id === formData.client_id,
+          const hasRule = pricingRuleByClientProduct.has(
+            `${formData.client_id}:${productId}`,
           );
           if (!hasRule) {
             return prev;
           }
         }
-        const product = products.find((p) => p.id === productId);
+        const product = productsById.get(productId);
         if (!product) return prev;
 
         const existing = existingIndex >= 0 ? prev[existingIndex] : undefined;
@@ -925,6 +934,20 @@ export function InvoiceForm({
         if (itemsError) throw itemsError;
       }
 
+      if (!initialInvoice?.id && conversionQuotationId && invoiceId) {
+        const { error: conversionUpdateError } = await supabase
+          .from("quotations")
+          .update({
+            status: "converted",
+            converted_invoice_id: invoiceId,
+            converted_at: new Date().toISOString(),
+          })
+          .eq("id", conversionQuotationId)
+          .is("converted_invoice_id", null);
+
+        if (conversionUpdateError) throw conversionUpdateError;
+      }
+
       router.push(`/dashboard/invoices/${invoiceId}`);
       router.refresh();
     } catch (error: unknown) {
@@ -934,20 +957,55 @@ export function InvoiceForm({
     }
   };
 
-  const selectedClient = clients.find((c) => c.id === formData.client_id);
-  const filteredClients = clients.filter((client) =>
-    client.name.toLowerCase().includes(clientSearchValue.toLowerCase()),
+  const selectedClient = useMemo(
+    () => clientsById.get(formData.client_id),
+    [clientsById, formData.client_id],
   );
-  const availableProducts = products.filter((p) =>
-    clientPricingRules.some(
-      (rule) =>
-        rule.product_id === p.id &&
-        rule.client_id === formData.client_id,
-    ),
+
+  const filteredClients = useMemo(() => {
+    const query = clientSearchValue.toLowerCase();
+    return clients.filter((client) =>
+      client.name.toLowerCase().includes(query),
+    );
+  }, [clients, clientSearchValue]);
+
+  const availableProducts = useMemo(
+    () =>
+      products.filter((p) =>
+        pricingRuleByClientProduct.has(`${formData.client_id}:${p.id}`),
+      ),
+    [products, pricingRuleByClientProduct, formData.client_id],
   );
-  const filteredProducts = availableProducts.filter((product) =>
-    product.name.toLowerCase().includes(productSearchValue.toLowerCase()),
-  );
+
+  const filteredProducts = useMemo(() => {
+    const query = productSearchValue.toLowerCase();
+    return availableProducts.filter((product) =>
+      product.name.toLowerCase().includes(query),
+    );
+  }, [availableProducts, productSearchValue]);
+
+  const duplicateItemIndexes = useMemo(() => {
+    const groups = new Map<string, number[]>();
+    items.forEach((item, index) => {
+      const key = `${item.product_id ?? ""}:${item.quantity ?? ""}`;
+      const bucket = groups.get(key);
+      if (bucket) {
+        bucket.push(index);
+      } else {
+        groups.set(key, [index]);
+      }
+    });
+
+    const duplicates = new Set<number>();
+    for (const indices of groups.values()) {
+      if (indices.length > 1) {
+        for (const index of indices) {
+          duplicates.add(index);
+        }
+      }
+    }
+    return duplicates;
+  }, [items]);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -1138,7 +1196,7 @@ export function InvoiceForm({
             )}
             {items.map((item, index) => {
               if (!item.product_id) return null;
-              const product = products.find((p) => p.id === item.product_id);
+              const product = productsById.get(item.product_id);
               if (!product) return null;
 
               const enabled = true;
@@ -1158,7 +1216,7 @@ export function InvoiceForm({
               return (
                 <div
                   key={`item-${index}`}
-                  className={`space-y-3 rounded-lg border p-4 ${isExactDuplicate(index) ? "border-red-500 border-2" : ""}`}
+                  className={`space-y-3 rounded-lg border p-4 ${duplicateItemIndexes.has(index) ? "border-red-500 border-2" : ""}`}
                 >
                   <div className="flex items-start gap-3">
                     <Button
@@ -1356,12 +1414,12 @@ export function InvoiceForm({
             </div>
           )}
 
-          {/* GST Configuration */}
+          {/* IGST Configuration */}
           <div className="rounded-lg border bg-slate-50 p-4 space-y-3">
-            <p className="text-sm font-semibold text-slate-700">GST Configuration</p>
+            <p className="text-sm font-semibold text-slate-700">IGST Configuration</p>
             <div className="flex flex-col sm:flex-row sm:items-end gap-4">
               <div className="space-y-2 flex-1">
-                <Label htmlFor="gst-percent" className="text-sm">GST (%)</Label>
+                <Label htmlFor="gst-percent" className="text-sm">IGST (%)</Label>
                 <Input
                   id="gst-percent"
                   type="number"
@@ -1423,7 +1481,7 @@ export function InvoiceForm({
               ) : (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
-                    GST{(invoiceRates.tax_percent || 0) > 0 ? ` (${invoiceRates.tax_percent}%)` : ""}:
+                    IGST{(invoiceRates.tax_percent || 0) > 0 ? ` (${invoiceRates.tax_percent}%)` : ""}:
                   </span>
                   <span className="font-medium">₹{totals.tax_amount.toFixed(2)}</span>
                 </div>

@@ -12,9 +12,24 @@ import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClientSelector } from "@/components/client-selector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const paymentMethodOptions = [
+  { value: "cash", label: "Cash" },
+  { value: "bank_transfer", label: "Bank Transfer" },
+  { value: "check", label: "Check" },
+  { value: "credit_card", label: "Credit Card" },
+  { value: "other", label: "Other" },
+];
+
+const paymentStatusOptions = [
+  { value: "pending", label: "Pending" },
+  { value: "completed", label: "Completed" },
+  { value: "failed", label: "Failed" },
+  { value: "refunded", label: "Refunded" },
+];
 
 interface Invoice {
   id: string;
@@ -69,40 +84,72 @@ export function PaymentForm({
     notes: "",
   });
 
-  // Filter invoices by selected client for bulk mode
-  const clientInvoices = selectedClientId
-    ? invoices.filter((inv) => inv.client_id === selectedClientId)
-    : invoices;
-  const invoiceOptions = invoices.map((invoice) => {
-    const invoiceBalance = Number(invoice.total_amount) - Number(invoice.amount_paid);
-    const clientName = Array.isArray(invoice.clients)
-      ? invoice.clients[0]?.name
-      : invoice.clients?.name;
+  const invoiceById = useMemo(() => {
+    const lookup = new Map<string, Invoice>();
+    for (const invoice of invoices) {
+      lookup.set(invoice.id, invoice);
+    }
+    return lookup;
+  }, [invoices]);
+
+  const clientInvoices = useMemo(
+    () => (selectedClientId ? invoices.filter((inv) => inv.client_id === selectedClientId) : invoices),
+    [invoices, selectedClientId],
+  );
+
+  const invoiceOptions = useMemo(
+    () =>
+      invoices.map((invoice) => {
+        const invoiceBalance = Number(invoice.total_amount) - Number(invoice.amount_paid);
+        const clientName = Array.isArray(invoice.clients)
+          ? invoice.clients[0]?.name
+          : invoice.clients?.name;
+
+        return {
+          value: invoice.id,
+          label: `${invoice.invoice_number} - ${clientName || "Unknown client"} (₹${invoiceBalance.toFixed(2)} due)`,
+        };
+      }),
+    [invoices],
+  );
+
+  const {
+    clientOutstandingInvoices,
+    clientTotalPending,
+    clientTotalInvoiced,
+    clientTotalPaid,
+  } = useMemo(() => {
+    let totalPending = 0;
+    let totalInvoiced = 0;
+    let totalPaid = 0;
+    const outstanding: Array<Invoice & { pending: number }> = [];
+
+    for (const inv of clientInvoices) {
+      const invoiceTotal = Number(inv.total_amount);
+      const invoicePaid = Number(inv.amount_paid);
+      const pending = invoiceTotal - invoicePaid;
+      totalInvoiced += invoiceTotal;
+      totalPaid += invoicePaid;
+      totalPending += pending;
+
+      if (pending > 0) {
+        outstanding.push({ ...inv, pending });
+      }
+    }
+
+    outstanding.sort(
+      (a, b) =>
+        new Date(a.issue_date || "").getTime() -
+        new Date(b.issue_date || "").getTime(),
+    );
 
     return {
-      value: invoice.id,
-      label: `${invoice.invoice_number} - ${clientName || "Unknown client"} (₹${invoiceBalance.toFixed(2)} due)`,
+      clientOutstandingInvoices: outstanding,
+      clientTotalPending: totalPending,
+      clientTotalInvoiced: totalInvoiced,
+      clientTotalPaid: totalPaid,
     };
-  });
-  const paymentMethodOptions = [
-    { value: "cash", label: "Cash" },
-    { value: "bank_transfer", label: "Bank Transfer" },
-    { value: "check", label: "Check" },
-    { value: "credit_card", label: "Credit Card" },
-    { value: "other", label: "Other" },
-  ];
-  const paymentStatusOptions = [
-    { value: "pending", label: "Pending" },
-    { value: "completed", label: "Completed" },
-    { value: "failed", label: "Failed" },
-    { value: "refunded", label: "Refunded" },
-  ];
-
-  // Calculate client's total pending
-  const clientTotalPending = clientInvoices.reduce((total, inv) => {
-    const pending = Number(inv.total_amount) - Number(inv.amount_paid);
-    return total + pending;
-  }, 0);
+  }, [clientInvoices]);
 
   // Auto-generate reference number for cash payments
   useEffect(() => {
@@ -122,7 +169,7 @@ export function PaymentForm({
   // Set selected invoice when invoice_id changes
   useEffect(() => {
     if (formData.invoice_id) {
-      const invoice = invoices.find((inv) => inv.id === formData.invoice_id);
+      const invoice = invoiceById.get(formData.invoice_id);
       setSelectedInvoice(invoice || null);
 
       // Auto-fill only once per invoice selection if the field is empty; allow clearing thereafter
@@ -137,7 +184,7 @@ export function PaymentForm({
         setAutoFilledInvoiceId(formData.invoice_id);
       }
     }
-  }, [formData.invoice_id, invoices, autoFilledInvoiceId]);
+  }, [formData.invoice_id, invoiceById, formData.amount, autoFilledInvoiceId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,16 +223,7 @@ export function PaymentForm({
       if (paymentMode === "bulk" && selectedClientId) {
         // Bulk payment mode: allocate payment to client's unpaid invoices
         let remainingAmount = paymentAmount;
-        const unpaidInvoices = clientInvoices
-          .filter((inv) => {
-            const pending = Number(inv.total_amount) - Number(inv.amount_paid);
-            return pending > 0;
-          })
-          .sort(
-            (a, b) =>
-              new Date(a.issue_date || "").getTime() -
-              new Date(b.issue_date || "").getTime(),
-          );
+        const unpaidInvoices = clientOutstandingInvoices;
 
         // Create a single payment record for tracking
         const { error: paymentError } = await supabase.from("payments").insert({
@@ -346,15 +384,8 @@ export function PaymentForm({
                       Client's Outstanding Invoices
                     </h4>
                     <div className="space-y-2">
-                      {clientInvoices
-                        .filter((inv) => {
-                          const pending =
-                            Number(inv.total_amount) - Number(inv.amount_paid);
-                          return pending > 0;
-                        })
-                        .map((inv) => {
-                          const pending =
-                            Number(inv.total_amount) - Number(inv.amount_paid);
+                      {clientOutstandingInvoices.map((inv) => {
+                          const pending = inv.pending;
                           return (
                             <div
                               key={inv.id}
@@ -392,24 +423,13 @@ export function PaymentForm({
                       </span>
                       <span className="font-medium">
                         ₹
-                        {clientInvoices
-                          .reduce(
-                            (sum, inv) => sum + Number(inv.total_amount),
-                            0,
-                          )
-                          .toFixed(2)}
+                        {clientTotalInvoiced.toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-blue-700">Already Paid:</span>
                       <span className="font-medium">
-                        ₹
-                        {clientInvoices
-                          .reduce(
-                            (sum, inv) => sum + Number(inv.amount_paid),
-                            0,
-                          )
-                          .toFixed(2)}
+                        ₹{clientTotalPaid.toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm font-bold border-t border-blue-300 pt-2">

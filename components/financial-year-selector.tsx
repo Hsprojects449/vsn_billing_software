@@ -1,10 +1,14 @@
 "use client"
 
+import { useMemo } from "react"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { cn } from "@/lib/utils"
 
 interface FinancialYearSelectorProps {
   selectedYear: string
   onYearChange: (year: string) => void
+  className?: string
+  triggerClassName?: string
 }
 
 // Financial year runs from April 1 to March 31
@@ -41,21 +45,31 @@ export function generateFinancialYears(count: number = 5): string[] {
   return years
 }
 
-export function FinancialYearSelector({ selectedYear, onYearChange }: FinancialYearSelectorProps) {
-  const financialYears = generateFinancialYears(10) // Last 10 years
-  const yearOptions = financialYears.map((fy) => ({
-    value: fy,
-    label: `FY ${fy}`,
-  }))
+export function FinancialYearSelector({
+  selectedYear,
+  onYearChange,
+  className,
+  triggerClassName,
+}: FinancialYearSelectorProps) {
+  const yearOptions = useMemo(
+    () =>
+      generateFinancialYears(10).map((fy) => ({
+        value: fy,
+        label: `FY ${fy}`,
+      })),
+    [],
+  )
   
   return (
-    <SearchableSelect
-      value={selectedYear}
-      onValueChange={onYearChange}
-      options={yearOptions}
-      placeholder="Select FY"
-      searchPlaceholder="Type financial year..."
-      triggerClassName="w-[180px]"
-    />
+    <div className={cn("w-full", className)}>
+      <SearchableSelect
+        value={selectedYear}
+        onValueChange={onYearChange}
+        options={yearOptions}
+        placeholder="Select FY"
+        searchPlaceholder="Type financial year..."
+        triggerClassName={cn("w-[180px]", triggerClassName)}
+      />
+    </div>
   )
 }

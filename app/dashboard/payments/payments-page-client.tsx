@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import { ClientSelector } from "@/components/client-selector";
 import { PaymentsTable } from "@/components/payments-table";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,12 +48,14 @@ interface PaymentsPageClientProps {
   clients: Client[];
   payments: Payment[];
   clientInvoices?: Record<string, Invoice[]>;
+  userRole?: string;
 }
 
 export function PaymentsPageClient({
   clients,
   payments,
   clientInvoices = {},
+  userRole,
 }: PaymentsPageClientProps) {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedFY, setSelectedFY] = useState<string>(getFinancialYear());
@@ -61,54 +63,63 @@ export function PaymentsPageClient({
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
+  const fyRange = useMemo(() => getFinancialYearDateRange(selectedFY), [selectedFY]);
+
   // Filter payments by client, financial year, and custom date range
-  const filteredPayments = payments.filter((payment) => {
+  const filteredPayments = useMemo(() => payments.filter((payment) => {
     if (selectedClientId && payment.invoices?.client_id !== selectedClientId) return false;
 
-    const { start, end } = getFinancialYearDateRange(selectedFY);
     const paymentDate = payment.payment_date;
-    if (paymentDate < start || paymentDate > end) return false;
+    if (paymentDate < fyRange.start || paymentDate > fyRange.end) return false;
 
     if (fromDate && paymentDate < fromDate) return false;
     if (toDate && paymentDate > toDate) return false;
 
     return true;
-  });
+  }), [payments, selectedClientId, fyRange, fromDate, toDate]);
 
   // Get invoices for selected client
-  const selectedClientInvoices = selectedClientId
-    ? clientInvoices[selectedClientId] || []
-    : [];
+  const selectedClientInvoices = useMemo(
+    () => (selectedClientId ? clientInvoices[selectedClientId] || [] : []),
+    [selectedClientId, clientInvoices],
+  );
 
-  // Calculate total pending amount for selected client
-  const calculateTotalPending = useCallback(() => {
-    return selectedClientInvoices.reduce((total, invoice) => {
-      const pending =
-        Number(invoice.total_amount) - Number(invoice.amount_paid);
-      return total + pending;
-    }, 0);
-  }, [selectedClientInvoices]);
+  const { totalPending, invoiceStats } = useMemo(() => {
+    let pendingTotal = 0;
+    let paid = 0;
+    let partiallyPaid = 0;
+    let unpaid = 0;
+    let overdue = 0;
 
-  // Count invoice statuses
-  const calculateInvoiceStats = useCallback(() => {
+    for (const invoice of selectedClientInvoices) {
+      const totalAmount = Number(invoice.total_amount);
+      const amountPaid = Number(invoice.amount_paid);
+      pendingTotal += totalAmount - amountPaid;
+
+      if (invoice.status === "paid") {
+        paid += 1;
+      } else if (invoice.status === "partially_paid" || (invoice.status === "recorded" && amountPaid > 0)) {
+        partiallyPaid += 1;
+      } else if (invoice.status === "recorded" && amountPaid === 0) {
+        unpaid += 1;
+      }
+
+      if (invoice.status === "overdue") {
+        overdue += 1;
+      }
+    }
+
     return {
-      total: selectedClientInvoices.length,
-      paid: selectedClientInvoices.filter((i) => i.status === "paid").length,
-      partiallyPaid: selectedClientInvoices.filter(
-        (i) =>
-          i.status === "partially_paid" ||
-          (i.status === "recorded" && Number(i.amount_paid) > 0),
-      ).length,
-      unpaid: selectedClientInvoices.filter(
-        (i) => i.status === "recorded" && Number(i.amount_paid) === 0,
-      ).length,
-      overdue: selectedClientInvoices.filter((i) => i.status === "overdue")
-        .length,
+      totalPending: pendingTotal,
+      invoiceStats: {
+        total: selectedClientInvoices.length,
+        paid,
+        partiallyPaid,
+        unpaid,
+        overdue,
+      },
     };
   }, [selectedClientInvoices]);
-
-  const totalPending = calculateTotalPending();
-  const invoiceStats = calculateInvoiceStats();
 
   return (
     <div className="space-y-6">
@@ -209,13 +220,16 @@ export function PaymentsPageClient({
         payments={filteredPayments}
         fromDate={fromDate}
         toDate={toDate}
+        userRole={userRole}
         toolbarLeft={
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">FY:</span>
-            <FinancialYearSelector
-              selectedYear={selectedFY}
-              onYearChange={setSelectedFY}
-            />
+            <div className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap">
+              <span className="text-sm font-medium text-muted-foreground">FY:</span>
+              <FinancialYearSelector
+                selectedYear={selectedFY}
+                onYearChange={setSelectedFY}
+              />
+            </div>
             <span className="text-sm font-medium text-muted-foreground">Client:</span>
             <ClientSelector
               clients={clients}

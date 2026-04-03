@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo } from "react"
 import { cn } from "@/lib/utils"
 import {
   Pagination,
@@ -11,6 +12,11 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+
+const PER_PAGE_OPTIONS = ["5", "10", "25", "50"].map((value) => ({
+  value,
+  label: value,
+}))
 
 interface TablePaginationProps {
   currentPage: number
@@ -35,7 +41,7 @@ export function TablePagination({
     return null
   }
 
-  const generatePageNumbers = () => {
+  const pageNumbers = useMemo(() => {
     const pages: (number | string)[] = []
     const showPages = 5
 
@@ -67,15 +73,10 @@ export function TablePagination({
     }
 
     return pages
-  }
+  }, [currentPage, totalPages])
 
-  const pageNumbers = generatePageNumbers()
   const startItem = (currentPage - 1) * itemsPerPage + 1
   const endItem = Math.min(currentPage * itemsPerPage, totalItems)
-  const perPageOptions = ["5", "10", "25", "50"].map((value) => ({
-    value,
-    label: value,
-  }))
 
   return (
     <div className="flex flex-col gap-4 mt-6">
@@ -96,7 +97,7 @@ export function TablePagination({
               id="items-per-page"
               value={itemsPerPage.toString()}
               onValueChange={(val) => onItemsPerPageChange(parseInt(val))}
-              options={perPageOptions}
+              options={PER_PAGE_OPTIONS}
               placeholder="Rows"
               searchPlaceholder="Type rows..."
               triggerClassName="w-[80px]"

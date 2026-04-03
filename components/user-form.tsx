@@ -5,6 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
@@ -44,6 +45,7 @@ export function UserForm({ organizations, initialData }: UserFormProps) {
   const roleOptions = [
     { value: "super_admin", label: "Super Admin" },
     { value: "admin", label: "Admin" },
+    { value: "billing_executive", label: "Billing Executive" },
     { value: "accountant", label: "Accountant" },
   ]
 
@@ -97,81 +99,89 @@ export function UserForm({ organizations, initialData }: UserFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl bg-white p-6 rounded-lg border border-slate-200">
-      <div className="space-y-4">
-        <div>
-          <Label htmlFor="full_name">Full Name</Label>
-          <Input
-            id="full_name"
-            value={formData.full_name}
-            onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-            required
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            disabled={!!initialData}
-            required
-          />
-        </div>
-
-        {!initialData && (
-          <div>
-            <Label htmlFor="password">Password</Label>
+    <Card>
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="full_name">Full Name</Label>
             <Input
-              id="password"
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              id="full_name"
+              value={formData.full_name}
+              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+              placeholder="Enter full name"
               required
-              minLength={6}
             />
           </div>
-        )}
 
-        <div>
-          <Label htmlFor="role">Role</Label>
-          <SearchableSelect
-            value={formData.role}
-            onValueChange={(value) => setFormData({ ...formData, role: value })}
-            options={roleOptions}
-            placeholder="Select role"
-            searchPlaceholder="Type role..."
-            id="role"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Super Admin: Full access | Admin: View-only for super admin areas, full access where accountants have access | Accountant: Limited to invoices, products, payments, clients
-          </p>
-        </div>
-
-        {initialData && (
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="is_active"
-              checked={formData.is_active}
-              onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-              className="w-4 h-4"
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="Enter email address"
+              disabled={!!initialData}
+              required
             />
-            <Label htmlFor="is_active">Active</Label>
           </div>
-        )}
-      </div>
 
-      <div className="flex gap-4 mt-6">
-        <Button type="submit" disabled={loading}>
-          {loading ? "Saving..." : initialData ? "Update User" : "Create User"}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/dashboard/users")}>
-          Cancel
-        </Button>
-      </div>
-    </form>
+          {!initialData && (
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder="Minimum 6 characters"
+                required
+                minLength={6}
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="role">Role</Label>
+            <SearchableSelect
+              value={formData.role}
+              onValueChange={(value) => setFormData({ ...formData, role: value })}
+              options={roleOptions}
+              placeholder="Select role"
+              searchPlaceholder="Type role..."
+              id="role"
+            />
+            <p className="text-xs text-muted-foreground">
+              Super Admin: Full access | Admin: Full access except Team and Settings are read-only | Billing Executive: Invoices, Quotations, Payments full access + Clients/Products view-only | Accountant: GST filing tab only
+            </p>
+          </div>
+
+          {initialData && (
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="is_active" className="text-base">Active Status</Label>
+                <p className="text-sm text-muted-foreground">Allow this user to access the system</p>
+              </div>
+              <input
+                type="checkbox"
+                id="is_active"
+                checked={formData.is_active}
+                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                className="w-4 h-4"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-4 pt-4">
+            <Button type="submit" disabled={loading} className="min-w-32">
+              {loading ? "Saving..." : initialData ? "Update User" : "Create User"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.push("/dashboard/users")}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import {
   Card,
   CardContent,
@@ -45,95 +47,109 @@ interface DashboardChartsProps {
 }
 
 export function DashboardCharts({ invoices, payments }: DashboardChartsProps) {
-  // Calculate monthly revenue data
-  const monthlyData: Record<string, number> = {};
-  payments.forEach((payment) => {
-    const date = new Date(payment.payment_date);
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-    monthlyData[monthKey] =
-      (monthlyData[monthKey] || 0) + Number(payment.amount);
-  });
+  const {
+    revenueChartData,
+    statusChartData,
+    invoicesChartData,
+    totalInvoiced,
+    totalPaid,
+    pendingAmount,
+    outstandingAmount,
+    pendingInvoicesCount,
+    outstandingInvoicesCount,
+    collectionRate,
+  } = useMemo(() => {
+    const monthlyData: Record<string, number> = {};
+    let paidAmount = 0;
 
-  const sortedMonths = Object.keys(monthlyData).sort();
-  const last6Months = sortedMonths.slice(-6);
-  const revenueChartData = last6Months.map((month) => ({
-    month: new Date(month + "-01").toLocaleDateString("en-IN", {
-      month: "short",
-      year: "2-digit",
-    }),
-    revenue: monthlyData[month],
-  }));
-
-  // Calculate invoice status distribution
-  const statusCount = invoices.reduce(
-    (acc, inv) => {
-      acc[inv.status] = (acc[inv.status] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  const statusChartData = [
-    { name: "Paid", value: statusCount.paid || 0, color: "#16a34a" },
-    { name: "Recorded", value: statusCount.recorded || 0, color: "#3b82f6" },
-    { name: "Overdue", value: statusCount.overdue || 0, color: "#dc2626" },
-    { name: "Draft", value: statusCount.draft || 0, color: "#6b7280" },
-  ].filter((item) => item.value > 0);
-
-  // Calculate daily invoices (last 30 days)
-  const last30DaysData: Record<string, number> = {};
-  const today = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
-    const dateKey = date.toISOString().split("T")[0];
-    last30DaysData[dateKey] = 0;
-  }
-
-  invoices.forEach((inv) => {
-    const dateKey = inv.issue_date;
-    if (last30DaysData.hasOwnProperty(dateKey)) {
-      last30DaysData[dateKey] += Number(inv.total_amount);
+    for (const payment of payments) {
+      const date = new Date(payment.payment_date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const amount = Number(payment.amount);
+      monthlyData[monthKey] = (monthlyData[monthKey] || 0) + amount;
+      paidAmount += amount;
     }
-  });
 
-  const invoicesChartData = Object.entries(last30DaysData).map(
-    ([date, amount]) => ({
+    const sortedMonths = Object.keys(monthlyData).sort();
+    const last6Months = sortedMonths.slice(-6);
+    const revenueData = last6Months.map((month) => ({
+      month: new Date(month + "-01").toLocaleDateString("en-IN", {
+        month: "short",
+        year: "2-digit",
+      }),
+      revenue: monthlyData[month],
+    }));
+
+    const last30DaysData: Record<string, number> = {};
+    const today = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateKey = date.toISOString().split("T")[0];
+      last30DaysData[dateKey] = 0;
+    }
+
+    const statusCount: Record<string, number> = {};
+    let invoicedAmount = 0;
+    let pending = 0;
+    let outstanding = 0;
+    let pendingCount = 0;
+    let outstandingCount = 0;
+    const todayStr = today.toISOString().split("T")[0];
+
+    for (const inv of invoices) {
+      statusCount[inv.status] = (statusCount[inv.status] || 0) + 1;
+      const totalAmount = Number(inv.total_amount);
+      const amountPaid = Number(inv.amount_paid);
+      const balance = totalAmount - amountPaid;
+      const isDue = inv.due_date <= todayStr;
+
+      invoicedAmount += totalAmount;
+
+      if (balance > 0 && !isDue) {
+        pending += balance;
+        pendingCount += 1;
+      }
+
+      if (balance > 0 && isDue) {
+        outstanding += balance;
+        outstandingCount += 1;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(last30DaysData, inv.issue_date)) {
+        last30DaysData[inv.issue_date] += totalAmount;
+      }
+    }
+
+    const statusData = [
+      { name: "Paid", value: statusCount.paid || 0, color: "#16a34a" },
+      { name: "Recorded", value: statusCount.recorded || 0, color: "#3b82f6" },
+      { name: "Overdue", value: statusCount.overdue || 0, color: "#dc2626" },
+      { name: "Draft", value: statusCount.draft || 0, color: "#6b7280" },
+    ].filter((item) => item.value > 0);
+
+    const invoiceData = Object.entries(last30DaysData).map(([date, amount]) => ({
       date: new Date(date).toLocaleDateString("en-IN", {
         month: "short",
         day: "numeric",
       }),
       amount,
-    }),
-  );
+    }));
 
-  // Calculate KPIs
-  const totalInvoiced = invoices.reduce(
-    (sum, inv) => sum + Number(inv.total_amount),
-    0,
-  );
-  const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-
-  // Pending Amount: Invoices not yet due (future due date)
-  const todayStr = today.toISOString().split("T")[0];
-  const pendingAmount = invoices.reduce((sum, inv) => {
-    const balance = Number(inv.total_amount) - Number(inv.amount_paid);
-    const isDue = inv.due_date <= todayStr;
-    return balance > 0 && !isDue ? sum + balance : sum;
-  }, 0);
-
-  // Outstanding Amount: Invoices overdue (past due date)
-  const outstandingAmount = invoices.reduce((sum, inv) => {
-    const balance = Number(inv.total_amount) - Number(inv.amount_paid);
-    const isDue = inv.due_date <= todayStr;
-    return balance > 0 && isDue ? sum + balance : sum;
-  }, 0);
-
-  const paidInvoicesCount = invoices.filter(
-    (inv) => inv.status === "paid",
-  ).length;
-  const collectionRate =
-    totalInvoiced > 0 ? ((totalPaid / totalInvoiced) * 100).toFixed(1) : "0";
+    return {
+      revenueChartData: revenueData,
+      statusChartData: statusData,
+      invoicesChartData: invoiceData,
+      totalInvoiced: invoicedAmount,
+      totalPaid: paidAmount,
+      pendingAmount: pending,
+      outstandingAmount: outstanding,
+      pendingInvoicesCount: pendingCount,
+      outstandingInvoicesCount: outstandingCount,
+      collectionRate:
+        invoicedAmount > 0 ? ((paidAmount / invoicedAmount) * 100).toFixed(1) : "0",
+    };
+  }, [invoices, payments]);
 
   return (
     <div className="space-y-6">
@@ -157,13 +173,7 @@ export function DashboardCharts({ invoices, payments }: DashboardChartsProps) {
             </div>
             <p className="text-xs text-muted-foreground mt-1 sm:mt-2">
               Not yet due -{" "}
-              {
-                invoices.filter((inv) => {
-                  const balance =
-                    Number(inv.total_amount) - Number(inv.amount_paid);
-                  return balance > 0 && inv.due_date > todayStr;
-                }).length
-              }{" "}
+              {pendingInvoicesCount}{" "}
               invoices upcoming
             </p>
           </CardContent>
@@ -187,13 +197,7 @@ export function DashboardCharts({ invoices, payments }: DashboardChartsProps) {
             </div>
             <p className="text-xs text-muted-foreground mt-1 sm:mt-2">
               Overdue -{" "}
-              {
-                invoices.filter((inv) => {
-                  const balance =
-                    Number(inv.total_amount) - Number(inv.amount_paid);
-                  return balance > 0 && inv.due_date <= todayStr;
-                }).length
-              }{" "}
+              {outstandingInvoicesCount}{" "}
               invoices past due
             </p>
           </CardContent>

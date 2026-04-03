@@ -82,13 +82,13 @@ export function SearchableSelect({
           aria-expanded={open}
           id={id}
           disabled={disabled}
-          className={cn("w-full justify-between font-normal", triggerClassName)}
+          className={cn("w-full justify-between overflow-hidden font-normal", triggerClassName)}
         >
-          {selectedOption?.label || placeholder}
+          <span className="truncate text-left">{selectedOption?.label || placeholder}</span>
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+      <PopoverContent className="z-50 w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
           <CommandInput
             placeholder={searchPlaceholder}

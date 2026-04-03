@@ -40,7 +40,7 @@ export function PrintableQuotation({ quotation, template }: PrintableQuotationPr
     company_address: "123 Business Street, City, State 12345",
     company_phone: "+91 00000 00000",
     company_email: "info@company.com",
-    company_logo_url: "/VSN%20Groups%20LOGO.jpeg",
+    company_logo_url: "/VSN_Groups_LOGO-removebg-preview.png",
     company_logo_file: null,
     tax_label: "GST",
     note_content:

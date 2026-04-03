@@ -162,7 +162,7 @@ export function QuotationsTable({ quotations, userRole, toolbarLeft }: Quotation
     setDeletingId(null);
   };
 
-  const colSpan = userRole !== "admin" ? 8 : 7;
+  const colSpan = 8;
 
   return (
     <>
@@ -190,7 +190,7 @@ export function QuotationsTable({ quotations, userRole, toolbarLeft }: Quotation
               <TableHead className="cursor-pointer" onClick={() => handleSort("status")}>
                 Status <SortIcon column="status" />
               </TableHead>
-              {userRole !== "admin" && <TableHead className="text-right">Actions</TableHead>}
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
 
             <TableRow>
@@ -221,7 +221,7 @@ export function QuotationsTable({ quotations, userRole, toolbarLeft }: Quotation
                   onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value }))}
                 />
               </TableHead>
-              {userRole !== "admin" && <TableHead />}
+              <TableHead />
             </TableRow>
           </TableHeader>
 
@@ -249,39 +249,37 @@ export function QuotationsTable({ quotations, userRole, toolbarLeft }: Quotation
                     <TableCell>
                       <Badge className={cfg.className}>{cfg.label}</Badge>
                     </TableCell>
-                    {userRole !== "admin" && (
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" asChild title="View">
-                            <Link href={`/dashboard/quotations/${q.id}`}>
-                              <Eye className="h-4 w-4" />
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="ghost" asChild title="View">
+                          <Link href={`/dashboard/quotations/${q.id}`}>
+                            <Eye className="h-4 w-4" />
+                          </Link>
+                        </Button>
+
+                        {q.status !== "converted" && (
+                          <Button size="sm" variant="ghost" asChild title="Edit">
+                            <Link href={`/dashboard/quotations/${q.id}/edit`}>
+                              <Pencil className="h-4 w-4" />
                             </Link>
                           </Button>
+                        )}
 
-                          {q.status !== "converted" && (
-                            <Button size="sm" variant="ghost" asChild title="Edit">
-                              <Link href={`/dashboard/quotations/${q.id}/edit`}>
-                                <Pencil className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                          )}
-
-                          {!q.converted_invoice_id && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              title="Delete"
-                              onClick={() => {
-                                setDeletingId(q.id);
-                                setDeleteDialogOpen(true);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    )}
+                        {!q.converted_invoice_id && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="Delete"
+                            onClick={() => {
+                              setDeletingId(q.id);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 );
               })

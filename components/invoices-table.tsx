@@ -28,7 +28,7 @@ import { useRouter } from "next/navigation";
 import { useState, useMemo, ReactNode } from "react";
 import { usePagination } from "@/hooks/use-pagination";
 import { TablePagination } from "@/components/table-pagination";
-import { exportToCSV, exportToPDF, ExportColumn, getTimestamp } from "@/lib/export-utils";
+import { exportToCSVAsync, exportToPDF, ExportColumn, getTimestamp } from "@/lib/export-utils";
 import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
@@ -120,23 +120,26 @@ export function InvoicesTable({
   // Apply filtering and sorting
   const processedInvoices = useMemo(() => {
     let filtered = [...invoices];
+    const invoiceQuery = filters.invoice_number.trim().toLowerCase();
+    const clientQuery = filters.client.trim().toLowerCase();
+    const statusQuery = filters.status.trim().toLowerCase();
 
     // Apply filters
-    if (filters.invoice_number) {
+    if (invoiceQuery) {
       filtered = filtered.filter((inv) =>
         inv.invoice_number
           .toLowerCase()
-          .includes(filters.invoice_number.toLowerCase()),
+          .includes(invoiceQuery),
       );
     }
-    if (filters.client) {
+    if (clientQuery) {
       filtered = filtered.filter((inv) =>
-        inv.clients.name.toLowerCase().includes(filters.client.toLowerCase()),
+        inv.clients.name.toLowerCase().includes(clientQuery),
       );
     }
-    if (filters.status) {
+    if (statusQuery) {
       filtered = filtered.filter((inv) =>
-        inv.status.toLowerCase().includes(filters.status.toLowerCase()),
+        inv.status.toLowerCase().includes(statusQuery),
       );
     }
 
@@ -238,7 +241,7 @@ export function InvoicesTable({
     setInvoiceToDelete(null);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     // Enrich invoices with due amount calculation and format due_date based on due_days_type
     const enrichedInvoices = processedInvoices.map((invoice) => ({
       ...invoice,
@@ -298,7 +301,7 @@ export function InvoicesTable({
       },
     ];
 
-    exportToCSV(enrichedInvoices, columns, `invoices-${getTimestamp()}.csv`);
+    await exportToCSVAsync(enrichedInvoices, columns, `invoices-${getTimestamp()}.csv`);
     toast({
       variant: "success",
       title: "Exported",

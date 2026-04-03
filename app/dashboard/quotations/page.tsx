@@ -6,6 +6,7 @@ import Link from "next/link";
 import { QuotationsPageClient } from "./quotations-page-client";
 import { Suspense } from "react";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { redirect } from "next/navigation";
 
 export default async function QuotationsPage() {
   const supabase = await createClient();
@@ -22,6 +23,10 @@ export default async function QuotationsPage() {
       .eq("id", user.id)
       .maybeSingle();
     userRole = profile?.role;
+  }
+
+  if (userRole === "accountant") {
+    redirect("/dashboard/gst-filings");
   }
 
   const [clientsResult, quotationsResult] = await Promise.all([

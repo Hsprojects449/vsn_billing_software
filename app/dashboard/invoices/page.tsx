@@ -6,6 +6,7 @@ import { InvoicesPageClient } from "./invoices-page-client";
 import { DashboardPageWrapper } from "@/components/dashboard-page-wrapper";
 import { Suspense } from "react";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { redirect } from "next/navigation";
 
 export default async function InvoicesPage() {
   const supabase = await createClient();
@@ -24,6 +25,10 @@ export default async function InvoicesPage() {
       .eq("id", user.id)
       .maybeSingle();
     userRole = profile?.role;
+  }
+
+  if (userRole === "accountant") {
+    redirect("/dashboard/gst-filings");
   }
 
   // Get all clients for selector

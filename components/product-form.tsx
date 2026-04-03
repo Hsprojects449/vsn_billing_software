@@ -20,6 +20,7 @@ interface Product {
   name: string
   description: string | null
   hsn_code?: string | null
+  operator_price?: string | number | null
   is_active: boolean
   operator_id?: string | null
 }
@@ -45,6 +46,7 @@ export function ProductForm({ product, operators, userRole }: ProductFormProps) 
     name: product?.name || "",
     description: product?.description || "",
     hsn_code: product?.hsn_code || "",
+    operator_price: String(product?.operator_price ?? "0"),
     is_active: product?.is_active ?? true,
     operator_id: product?.operator_id || "",
   })
@@ -103,6 +105,7 @@ export function ProductForm({ product, operators, userRole }: ProductFormProps) 
             name: formData.name,
             description: formData.description,
             hsn_code: formData.hsn_code || null,
+            operator_price: Number(formData.operator_price || 0),
             is_active: formData.is_active,
             operator_id: formData.operator_id,
           })
@@ -121,9 +124,10 @@ export function ProductForm({ product, operators, userRole }: ProductFormProps) 
           name: formData.name,
           description: formData.description,
           hsn_code: formData.hsn_code || null,
+          operator_price: Number(formData.operator_price || 0),
           is_active: formData.is_active,
           unit_price: 0,
-          paper_price: 0,
+          paper_price: Number(formData.operator_price || 0),
           unit: "unit",
           tax_rate: 0,
           operator_id: formData.operator_id,
@@ -210,6 +214,21 @@ export function ProductForm({ product, operators, userRole }: ProductFormProps) 
               placeholder="Select operator"
               searchPlaceholder="Type operator name..."
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="operator_price">Operator Price (Cost) (₹)</Label>
+            <Input
+              id="operator_price"
+              type="number"
+              min="0"
+              step="0.0001"
+              value={formData.operator_price}
+              onChange={(e) => setFormData({ ...formData, operator_price: e.target.value })}
+              placeholder="Enter operator cost price"
+              required
+            />
+            <p className="text-xs text-muted-foreground">Used for margin calculations in pricing and reports.</p>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border p-4">

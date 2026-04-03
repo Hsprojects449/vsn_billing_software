@@ -19,10 +19,10 @@ export default async function ClientPricingPage() {
     redirect("/auth/login")
   }
 
-  // Check role (super_admin full, admin view-only)
+  // Check role
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
 
-  if (!profile || (profile.role !== "super_admin" && profile.role !== "admin")) {
+  if (!profile || (profile.role !== "super_admin" && profile.role !== "admin" && profile.role !== "billing_executive")) {
     redirect("/dashboard")
   }
 
@@ -36,7 +36,7 @@ export default async function ClientPricingPage() {
       `
       *,
       clients(name),
-      products(name, paper_price)
+      products(name, paper_price, operator_price)
     `,
     )
     .order("created_at", { ascending: false })
@@ -45,14 +45,12 @@ export default async function ClientPricingPage() {
     <DashboardPageWrapper title="Client-Specific Pricing">
       <div className="w-full p-4 sm:p-6 lg:p-8 space-y-4">
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3">
-          {profile.role === "super_admin" && (
-            <Button asChild className="w-full sm:w-auto">
-              <Link href="/dashboard/client-pricing/new">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Pricing Rule
-              </Link>
-            </Button>
-          )}
+          <Button asChild className="w-full sm:w-auto">
+            <Link href="/dashboard/client-pricing/new">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Pricing Rule
+            </Link>
+          </Button>
         </div>
 
         <Suspense fallback={<LoadingOverlay />}>

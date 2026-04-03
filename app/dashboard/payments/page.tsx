@@ -6,9 +6,30 @@ import { PaymentsPageClient } from "./payments-page-client"
 import { DashboardPageWrapper } from "@/components/dashboard-page-wrapper"
 import { Suspense } from "react"
 import { LoadingOverlay } from "@/components/loading-overlay"
+import { redirect } from "next/navigation"
 
 export default async function PaymentsPage() {
   const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect("/auth/login")
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle()
+
+  const userRole = profile?.role
+
+  if (userRole === "accountant") {
+    redirect("/dashboard/gst-filings")
+  }
 
   // Get all clients for selector
   const { data: clients } = await supabase
@@ -58,7 +79,12 @@ export default async function PaymentsPage() {
         </div>
 
         <Suspense fallback={<LoadingOverlay />}>
-          <PaymentsPageClient clients={clients || []} payments={payments || []} clientInvoices={clientInvoices} />
+          <PaymentsPageClient
+            clients={clients || []}
+            payments={payments || []}
+            clientInvoices={clientInvoices}
+            userRole={userRole}
+          />
         </Suspense>
       </div>
     </DashboardPageWrapper>

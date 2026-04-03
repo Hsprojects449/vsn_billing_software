@@ -22,6 +22,7 @@ interface Product {
   name: string;
   description?: string;
   paper_price: string;
+  operator_price?: string | number | null;
 }
 
 interface PricingRule {
@@ -90,6 +91,18 @@ export function ClientPricingForm({
   const [selectedClient, setSelectedClient] = useState(
     existingRule?.client_id || existingRules?.[0]?.client_id || "",
   );
+
+  const productOperatorPriceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const product of products) {
+      map.set(
+        product.id,
+        Number(product.operator_price ?? product.paper_price ?? 0),
+      );
+    }
+    return map;
+  }, [products]);
+
   const [productRules, setProductRules] = useState<
     Record<string, ProductPricingRule>
   >(() => {
@@ -97,10 +110,13 @@ export function ClientPricingForm({
       return {
         [existingRule.product_id]: {
           product_id: existingRule.product_id,
-          operator_price:
-            existingRule.operator_price?.toString() ||
-            products.find((p) => p.id === existingRule.product_id)?.paper_price ||
-            "",
+          operator_price: String(
+            products.find((p) => p.id === existingRule.product_id)
+              ?.operator_price ??
+              products.find((p) => p.id === existingRule.product_id)
+                ?.paper_price ??
+              "",
+          ),
           price_category_id: existingRule.price_category_id || "",
           price_rule_type: existingRule.price_rule_type,
           price_rule_value: existingRule.price_rule_value?.toString() || "",
@@ -126,10 +142,11 @@ export function ClientPricingForm({
         byProduct[rule.product_id] = {
           id: rule.id,
           product_id: rule.product_id,
-          operator_price:
-            rule.operator_price?.toString() ||
-            products.find((p) => p.id === rule.product_id)?.paper_price ||
-            "",
+          operator_price: String(
+            products.find((p) => p.id === rule.product_id)?.operator_price ??
+              products.find((p) => p.id === rule.product_id)?.paper_price ??
+              "",
+          ),
           price_category_id: rule.price_category_id || "",
           price_rule_type: rule.price_rule_type,
           price_rule_value: rule.price_rule_value?.toString() || "",
@@ -202,7 +219,11 @@ export function ClientPricingForm({
     const addFromExistingRule = (r: PricingRule) => {
       map[r.product_id] = {
         enabled: true,
-        operator_price: normalizeNumericString(r.operator_price ?? ""),
+        operator_price: normalizeNumericString(
+          products.find((p) => p.id === r.product_id)?.operator_price ??
+            products.find((p) => p.id === r.product_id)?.paper_price ??
+            "",
+        ),
         use_fixed_value:
           r.fixed_base_value !== null && r.fixed_base_value !== undefined,
         fixed_value: normalizeNumericString(r.fixed_base_value ?? ""),
@@ -229,7 +250,7 @@ export function ClientPricingForm({
     }
 
     return map;
-  }, [existingRule, existingRules]);
+  }, [existingRule, existingRules, products]);
 
   const isProductRuleEdited = (productId: string, rule: ProductPricingRule) => {
     const initial = initialRulesByProduct[productId];
@@ -241,7 +262,6 @@ export function ClientPricingForm({
     const current = normalizeCurrentRuleForCompare(rule);
     return (
       initial.enabled !== current.enabled ||
-      initial.operator_price !== current.operator_price ||
       initial.use_fixed_value !== current.use_fixed_value ||
       initial.fixed_value !== current.fixed_value ||
       initial.price_category_id !== current.price_category_id ||
@@ -271,11 +291,6 @@ export function ClientPricingForm({
     }
 
     for (const rule of enabledRules) {
-      if (!rule.operator_price) {
-        setError("Please enter operator price for all enabled products");
-        setIsLoading(false);
-        return;
-      }
       if (!rule.fixed_value) {
         setError(
           "Please enter a fixed base price for all enabled products",
@@ -335,7 +350,6 @@ export function ClientPricingForm({
         // Update existing rule (single product mode)
         const rule = productRules[existingRule.product_id];
         const updateData: any = {
-          operator_price: Number(rule.operator_price),
           price_rule_type: rule.price_rule_type,
           notes: rule.notes,
         };
@@ -377,7 +391,6 @@ export function ClientPricingForm({
 
         const updatePromises = rulesToUpdate.map(async (rule) => {
           const updateData: any = {
-            operator_price: Number(rule.operator_price),
             price_rule_type: rule.price_rule_type,
             notes: rule.notes,
           };
@@ -420,7 +433,6 @@ export function ClientPricingForm({
             const baseData = {
               client_id: selectedClient,
               product_id: rule.product_id,
-              operator_price: Number(rule.operator_price),
               price_rule_type: rule.price_rule_type,
               notes: rule.notes,
               organization_id: profile.organization_id,
@@ -478,7 +490,6 @@ export function ClientPricingForm({
             const baseData = {
               client_id: selectedClient,
               product_id: rule.product_id,
-              operator_price: Number(rule.operator_price),
               price_rule_type: rule.price_rule_type,
               notes: rule.notes,
               organization_id: profile.organization_id,
@@ -586,7 +597,7 @@ export function ClientPricingForm({
             products.map((product) => {
               const rule = productRules[product.id] || {
                 product_id: product.id,
-                operator_price: product.paper_price || "",
+                operator_price: String(product.operator_price ?? product.paper_price ?? ""),
                 price_category_id: "",
                 price_rule_type: "discount_percentage",
                 price_rule_value: "",
@@ -654,22 +665,17 @@ export function ClientPricingForm({
                   {(rule.enabled || existingRule) && (
                     <div className="space-y-4 pl-0 md:pl-8">
                       <div className="space-y-2">
-                        <Label>
-                          Operator Price (₹) <span className="text-red-500">*</span>
-                        </Label>
+                        <Label>Operator Price (₹)</Label>
                         <Input
                           type="number"
                           step="0.0001"
                           min="0"
-                          required={rule.enabled}
-                          value={rule.operator_price || ""}
-                          onChange={(e) =>
-                            updateProductRule({ operator_price: e.target.value })
-                          }
-                          placeholder="Enter operator price"
+                          value={productOperatorPriceMap.get(product.id) ?? 0}
+                          disabled
+                          readOnly
                         />
                         <p className="text-xs text-muted-foreground">
-                          Used to compute client margin in pricing and reports.
+                          Managed from Product setup and used to compute margin in pricing and reports.
                         </p>
                       </div>
 
@@ -899,7 +905,8 @@ export function ClientPricingForm({
                           }
 
                           const ruleValue = Number(rule.price_rule_value);
-                          const operatorPrice = Number(rule.operator_price || 0);
+                          const operatorPrice =
+                            productOperatorPriceMap.get(product.id) ?? 0;
                           let finalPrice = categoryPrice;
 
                           switch (rule.price_rule_type) {

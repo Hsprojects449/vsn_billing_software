@@ -6,18 +6,6 @@ import { SettingsForm } from "@/components/settings-form"
 import { InvoiceTemplateForm } from "@/components/invoice-template-form"
 import { AutomatedReportsSettings } from "@/components/automated-reports-settings"
 
-async function InvoiceTemplateSection({ organizationId }: { organizationId: string }) {
-  const supabase = await createClient()
-  
-  const { data: template } = await supabase
-    .from("invoice_templates")
-    .select("*")
-    .eq("organization_id", organizationId)
-    .single()
-  
-  return <InvoiceTemplateForm existingTemplate={template} />
-}
-
 export default async function SettingsPage() {
   const supabase = await createClient()
 
@@ -38,12 +26,18 @@ export default async function SettingsPage() {
 
   const isManagerViewOnly = profile.role === "admin"
 
-  // Get organization settings
-  const { data: organization } = await supabase
-    .from("organizations")
-    .select("*")
-    .eq("id", profile.organization_id)
-    .single()
+  const [{ data: organization }, { data: template }] = await Promise.all([
+    supabase
+      .from("organizations")
+      .select("*")
+      .eq("id", profile.organization_id)
+      .single(),
+    supabase
+      .from("invoice_templates")
+      .select("*")
+      .eq("organization_id", profile.organization_id)
+      .single(),
+  ])
 
   return (
     <DashboardPageWrapper title="System Settings">
@@ -84,7 +78,7 @@ export default async function SettingsPage() {
               <CardDescription>Customize invoice appearance and branding</CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
-              {await InvoiceTemplateSection({ organizationId: profile.organization_id })}
+              <InvoiceTemplateForm existingTemplate={template} />
             </CardContent>
           </Card>
 

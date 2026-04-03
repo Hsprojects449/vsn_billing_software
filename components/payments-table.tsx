@@ -36,7 +36,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { exportToCSV, exportToPDF, ExportColumn, getTimestamp } from "@/lib/export-utils";
+import { exportToCSVAsync, exportToPDF, ExportColumn, getTimestamp } from "@/lib/export-utils";
 import { Input } from "@/components/ui/input";
 
 interface Payment {
@@ -63,6 +63,7 @@ interface PaymentsTableProps {
   toolbarLeft?: ReactNode;
   fromDate?: string;
   toDate?: string;
+  userRole?: string;
 }
 
 const statusConfig = {
@@ -72,7 +73,13 @@ const statusConfig = {
   refunded: { label: "Refunded", className: "bg-slate-100 text-slate-800" },
 };
 
-export function PaymentsTable({ payments, toolbarLeft, fromDate = "", toDate = "" }: PaymentsTableProps) {
+export function PaymentsTable({
+  payments,
+  toolbarLeft,
+  fromDate = "",
+  toDate = "",
+  userRole,
+}: PaymentsTableProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -110,25 +117,28 @@ export function PaymentsTable({ payments, toolbarLeft, fromDate = "", toDate = "
   // Apply filtering and sorting
   const processedPayments = useMemo(() => {
     let filtered = [...payments];
+    const invoiceQuery = filters.invoice.trim().toLowerCase();
+    const clientQuery = filters.client.trim().toLowerCase();
+    const methodQuery = filters.method.trim().toLowerCase();
 
     // Apply filters
-    if (filters.invoice) {
+    if (invoiceQuery) {
       filtered = filtered.filter((p) =>
         p.invoices.invoice_number
           .toLowerCase()
-          .includes(filters.invoice.toLowerCase()),
+          .includes(invoiceQuery),
       );
     }
-    if (filters.client) {
+    if (clientQuery) {
       filtered = filtered.filter((p) =>
         p.invoices.clients.name
           .toLowerCase()
-          .includes(filters.client.toLowerCase()),
+          .includes(clientQuery),
       );
     }
-    if (filters.method) {
+    if (methodQuery) {
       filtered = filtered.filter((p) =>
-        p.payment_method.toLowerCase().includes(filters.method.toLowerCase()),
+        p.payment_method.toLowerCase().includes(methodQuery),
       );
     }
 
@@ -331,7 +341,7 @@ export function PaymentsTable({ payments, toolbarLeft, fromDate = "", toDate = "
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const columns: ExportColumn[] = [
       {
         key: "invoices",
@@ -368,7 +378,7 @@ export function PaymentsTable({ payments, toolbarLeft, fromDate = "", toDate = "
       },
     ];
 
-    exportToCSV(processedPayments, columns, `payments-${getTimestamp()}.csv`);
+    await exportToCSVAsync(processedPayments, columns, `payments-${getTimestamp()}.csv`);
     toast({
       variant: "success",
       title: "Exported",

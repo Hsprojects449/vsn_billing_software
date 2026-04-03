@@ -19,7 +19,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types
-CREATE TYPE user_role AS ENUM ('super_admin', 'admin', 'accountant');
+CREATE TYPE user_role AS ENUM ('super_admin', 'admin', 'billing_executive', 'accountant');
 CREATE TYPE invoice_status AS ENUM ('draft', 'sent', 'paid', 'overdue', 'cancelled');
 CREATE TYPE payment_status AS ENUM ('pending', 'completed', 'failed', 'refunded');
 CREATE TYPE payment_method AS ENUM ('cash', 'bank_transfer', 'check', 'credit_card', 'other');

@@ -35,7 +35,7 @@ interface InvoiceTemplateFormProps {
   existingTemplate?: InvoiceTemplate | null
 }
 
-const DEFAULT_LOGO_URL = "/VSN%20Groups%20LOGO.jpeg"
+const DEFAULT_LOGO_URL = "/VSN_Groups_LOGO-removebg-preview.png"
 
 const DEFAULT_WHATSAPP_TEMPLATE_ROWS: WhatsAppTemplateRow[] = [
   {
@@ -99,7 +99,10 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
     company_email: existingTemplate?.company_email || "",
     company_logo_url: existingTemplate?.company_logo_url || (existingTemplate?.company_logo_file ? "" : DEFAULT_LOGO_URL),
     company_logo_file: existingTemplate?.company_logo_file || null,
-    tax_label: existingTemplate?.tax_label || "GST",
+    tax_label:
+      existingTemplate?.tax_label === "GST"
+        ? "IGST"
+        : existingTemplate?.tax_label || "IGST",
     note_content:
       existingTemplate?.note_content ||
       "1. Material once sold will not be taken back.\n2. Kindly verify quantity and amount before confirmation.",
@@ -292,7 +295,7 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
                 id="tax_label"
                 value={formData.tax_label}
                 onChange={(e) => setFormData({ ...formData, tax_label: e.target.value })}
-                placeholder="GST"
+                placeholder="IGST"
               />
             </div>
           </div>

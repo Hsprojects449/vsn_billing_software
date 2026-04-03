@@ -23,7 +23,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
-    CREATE TYPE user_role AS ENUM ('super_admin', 'admin', 'accountant');
+    CREATE TYPE user_role AS ENUM ('super_admin', 'admin', 'billing_executive', 'accountant');
   END IF;
 END $$;
 

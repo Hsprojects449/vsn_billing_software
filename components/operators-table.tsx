@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { exportToCSV, ExportColumn, getTimestamp } from "@/lib/export-utils"
+import { exportToCSVAsync, ExportColumn, getTimestamp } from "@/lib/export-utils"
 
 interface Operator {
   id: string
@@ -64,7 +64,7 @@ export function OperatorsTable({ operators }: OperatorsTableProps) {
     setIsDeleting(false)
   }
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const columns: ExportColumn[] = [
       { key: "name", label: "Operator Name" },
       { key: "description", label: "Description" },
@@ -75,7 +75,7 @@ export function OperatorsTable({ operators }: OperatorsTableProps) {
       },
     ]
 
-    exportToCSV(operators, columns, `operators-${getTimestamp()}.csv`)
+    await exportToCSVAsync(operators, columns, `operators-${getTimestamp()}.csv`)
     toast({
       variant: "success",
       title: "Exported",

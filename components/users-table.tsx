@@ -188,6 +188,8 @@ export function UsersTable({ users, userRole }: { users: User[]; userRole?: stri
         return "bg-amber-100 text-amber-700"
       case "accountant":
         return "bg-green-100 text-green-700"
+      case "billing_executive":
+        return "bg-indigo-100 text-indigo-700"
       default:
         return "bg-slate-100 text-slate-700"
     }

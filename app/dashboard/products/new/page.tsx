@@ -18,6 +18,14 @@ export default async function NewProductPage() {
     supabase.from("operators").select("id, name, is_active").order("name"),
   ])
 
+  if (profile?.role === "billing_executive") {
+    redirect("/dashboard/products")
+  }
+
+  if (profile?.role === "accountant") {
+    redirect("/dashboard/gst-filings")
+  }
+
   return (
     <div className="p-6 lg:p-8">
       <div className="mb-6">

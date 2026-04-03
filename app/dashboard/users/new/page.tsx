@@ -21,13 +21,15 @@ export default async function NewUserPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-6 lg:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900">Create New User</h1>
-        <p className="text-slate-500 mt-1">Add a new user (Admin, Manager, or Accountant)</p>
+        <h1 className="text-3xl font-bold tracking-tight">Create New User</h1>
+        <p className="text-muted-foreground mt-1">Add a new user (Super Admin, Admin, Billing Executive or Accountant)</p>
       </div>
 
-      <UserForm organizations={[]} />
+      <div className="max-w-2xl">
+        <UserForm organizations={[]} />
+      </div>
     </div>
   )
 }

@@ -18,7 +18,7 @@ interface PricingRule {
   conditional_discount_below?: number | null
   conditional_discount_above_equal?: number | null
   clients: { name: string }
-  products: { name: string; paper_price: string }
+  products: { name: string; paper_price: string; operator_price?: string | number | null }
 }
 
 interface Client {

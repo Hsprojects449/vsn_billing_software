@@ -71,9 +71,9 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
     company_address: "123 Business Street, City, State 12345",
     company_phone: "+91 00000 00000",
     company_email: "info@company.com",
-    company_logo_url: "/VSN%20Groups%20LOGO.jpeg",
+    company_logo_url: "/VSN_Groups_LOGO-removebg-preview.png",
     company_logo_file: null,
-    tax_label: "GST",
+    tax_label: "IGST",
     note_content:
       "1. Material once sold will not be taken back.\n2. Kindly verify quantity and amount before confirmation.",
     payment_instructions:
@@ -83,6 +83,8 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
   };
 
   const activeTemplate = template || defaultTemplate;
+  const activeTaxLabel =
+    activeTemplate.tax_label === "GST" ? "IGST" : activeTemplate.tax_label;
   const balance = Number(invoice.total_amount) - Number(invoice.amount_paid);
   const logoSrc =
     activeTemplate.company_logo_file || activeTemplate.company_logo_url;
@@ -315,7 +317,7 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
                   ) : (
                     <div className="flex justify-between gap-4">
                       <span className="text-slate-600">
-                        {activeTemplate.tax_label}
+                        {activeTaxLabel}
                         {effectiveTaxPercent > 0 ? ` (${effectiveTaxPercent.toFixed(0)}%)` : ""}
                       </span>
                       <span className="font-medium">{formatCurrency(invoice.tax_amount)}</span>

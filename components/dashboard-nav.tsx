@@ -23,6 +23,7 @@ import {
   Briefcase,
   CreditCard,
   ChevronLeft,
+  FileSpreadsheet,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
@@ -85,7 +86,7 @@ export function DashboardNav({ profile }: DashboardNavProps) {
         href: "/dashboard",
         label: "Dashboard",
         icon: LayoutDashboard,
-        roles: ["super_admin", "admin"],
+        roles: ["super_admin"],
       },
       {
         href: "/dashboard/users",
@@ -97,61 +98,67 @@ export function DashboardNav({ profile }: DashboardNavProps) {
         href: "/dashboard/clients",
         label: "Clients",
         icon: Briefcase,
-        roles: ["super_admin", "admin"],
+        roles: ["super_admin", "admin", "billing_executive"],
       },
       {
         href: "/dashboard/products",
         label: "Products",
         icon: Package,
-        roles: ["super_admin", "admin"],
+        roles: ["super_admin", "admin", "billing_executive"],
       },
       {
         href: "/dashboard/operators",
         label: "Operators",
         icon: Users,
-        roles: ["super_admin", "admin"],
+        roles: ["super_admin"],
       },
         {
           href: "/dashboard/operators/invoices",
           label: "Operator Invoices",
           icon: FileText,
-          roles: ["super_admin", "admin"],
+          roles: ["super_admin"],
         },
         {
           href: "/dashboard/operators/payments",
           label: "Operator Payments",
           icon: Banknote,
-          roles: ["super_admin", "admin"],
+          roles: ["super_admin"],
         },
       {
         href: "/dashboard/client-pricing",
         label: "Pricing Rules",
         icon: CreditCard,
-        roles: ["super_admin", "admin"],
+        roles: ["super_admin", "admin", "billing_executive"],
       },
       {
         href: "/dashboard/invoices",
         label: "Invoices",
         icon: FileText,
-        roles: ["super_admin", "admin", "accountant"],
+        roles: ["super_admin", "admin", "billing_executive"],
       },
       {
         href: "/dashboard/quotations",
         label: "Quotations",
         icon: FileText,
-        roles: ["super_admin", "admin", "accountant"],
+        roles: ["super_admin", "admin", "billing_executive"],
       },
       {
         href: "/dashboard/payments",
         label: "Payments",
         icon: Banknote,
-        roles: ["super_admin", "admin", "accountant"],
+        roles: ["super_admin", "admin", "billing_executive"],
       },
       {
         href: "/dashboard/reports",
         label: "Reports",
         icon: BarChart3,
-        roles: ["super_admin", "admin"],
+        roles: ["super_admin"],
+      },
+      {
+        href: "/dashboard/gst-filings",
+        label: "GST Filing",
+        icon: FileSpreadsheet,
+        roles: ["accountant"],
       },
       {
         href: "/dashboard/settings",
@@ -200,18 +207,18 @@ export function DashboardNav({ profile }: DashboardNavProps) {
             )}
           >
             <Image
-              src="/VSN%20Groups%20LOGO.jpeg"
-              alt="Billing Management System logo"
+              src="/VSN_Groups_LOGO-removebg-preview.png"
+              alt="VSN BillPro"
               width={132}
               height={132}
-              className="h-11 w-11 rounded-lg object-contain shadow-sm flex-shrink-0"
+              className="h-11 w-11 object-contain flex-shrink-0"
               quality={100}
               priority
             />
             {!isSidebarCollapsed && (
               <div className="flex-1 min-w-0">
                 <h1 className="text-2xl font-bold text-slate-900 leading-tight">
-                  Invoice Pro
+                  VSN <span className="text-blue-600">BillPro</span>
                 </h1>
                 <p className="text-sm text-slate-500 mt-1 truncate">
                   {profile?.full_name}

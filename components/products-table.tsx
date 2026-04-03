@@ -38,7 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { exportToCSV, ExportColumn, getTimestamp } from "@/lib/export-utils"
+import { exportToCSVAsync, ExportColumn, getTimestamp } from "@/lib/export-utils"
 import { Input } from "@/components/ui/input"
 
 interface Product {
@@ -59,14 +59,17 @@ interface Product {
 
 interface ProductsTableProps {
   products: Product[]
+  userRole?: string
 }
 
 function SortableProductRow({
   product,
   onDelete,
+  isViewOnly,
 }: {
   product: Product
   onDelete: (id: string) => void
+  isViewOnly: boolean
 }) {
   const {
     attributes,
@@ -86,13 +89,15 @@ function SortableProductRow({
   return (
     <TableRow ref={setNodeRef} style={style} className="text-xs sm:text-sm">
       <TableCell className="w-[40px] sm:w-[50px] px-2 sm:px-4 py-2 sm:py-3">
-        <div
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing hover:bg-muted rounded p-1 inline-flex"
-        >
-          <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-        </div>
+        {!isViewOnly && (
+          <div
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing hover:bg-muted rounded p-1 inline-flex"
+          >
+            <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+          </div>
+        )}
       </TableCell>
       <TableCell className="font-medium px-2 sm:px-4 py-2 sm:py-3 max-w-[100px] sm:max-w-none truncate">{product.name}</TableCell>
       <TableCell className="hidden sm:table-cell px-2 sm:px-4 py-2 sm:py-3 max-w-xs truncate">
@@ -115,30 +120,35 @@ function SortableProductRow({
       </TableCell>
       <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
         <div className="flex justify-end gap-1 sm:gap-2">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href={`/dashboard/products/${product.id}/edit`}>
-              <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
-            </Link>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDelete(product.id)}
-          >
-            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
-          </Button>
+          {!isViewOnly && (
+            <>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href={`/dashboard/products/${product.id}/edit`}>
+                  <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
+                </Link>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onDelete(product.id)}
+              >
+                <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
+              </Button>
+            </>
+          )}
         </div>
       </TableCell>
     </TableRow>
   )
 }
 
-export function ProductsTable({ products }: ProductsTableProps) {
+export function ProductsTable({ products, userRole }: ProductsTableProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<string | null>(null)
+  const isViewOnly = userRole === "billing_executive"
 
   // Drag and drop setup
   const [orderedProducts, setOrderedProducts] = useState(products)
@@ -318,7 +328,7 @@ export function ProductsTable({ products }: ProductsTableProps) {
     setIsDeleting(false)
   }
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const columns: ExportColumn[] = [
       { key: "name", label: "Product Name" },
       { key: "description", label: "Description" },
@@ -335,7 +345,7 @@ export function ProductsTable({ products }: ProductsTableProps) {
       },
     ]
 
-    exportToCSV(processedProducts, columns, `products-${getTimestamp()}.csv`)
+    await exportToCSVAsync(processedProducts, columns, `products-${getTimestamp()}.csv`)
     toast({
       variant: "success",
       title: "Exported",
@@ -363,7 +373,7 @@ export function ProductsTable({ products }: ProductsTableProps) {
           id="products-dnd"
           sensors={sensors}
           collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
+          onDragEnd={isViewOnly ? undefined : handleDragEnd}
         >
           <Table className="text-xs sm:text-sm">
             <TableHeader>
@@ -384,7 +394,9 @@ export function ProductsTable({ products }: ProductsTableProps) {
                 <TableHead className="cursor-pointer hover:bg-muted/50 px-2 sm:px-4 py-2 sm:py-3" onClick={() => handleSort('is_active')}>
                   Status<SortIcon column="is_active" />
                 </TableHead>
-                <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">Actions</TableHead>
+                <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                  {isViewOnly ? "View" : "Actions"}
+                </TableHead>
               </TableRow>
               <TableRow>
                 <TableHead className="px-2 sm:px-4 py-2"></TableHead>
@@ -437,6 +449,7 @@ export function ProductsTable({ products }: ProductsTableProps) {
                       setProductToDelete(id)
                       setDeleteDialogOpen(true)
                     }}
+                    isViewOnly={isViewOnly}
                   />
                 ))}
               </SortableContext>

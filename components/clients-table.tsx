@@ -36,7 +36,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { exportToCSV, ExportColumn, getTimestamp } from "@/lib/export-utils";
+import { exportToCSVAsync, ExportColumn, getTimestamp } from "@/lib/export-utils";
 import { Input } from "@/components/ui/input";
 
 interface Client {
@@ -60,9 +60,10 @@ interface Client {
 
 interface ClientsTableProps {
   clients: Client[];
+  userRole?: string;
 }
 
-export function ClientsTable({ clients }: ClientsTableProps) {
+export function ClientsTable({ clients, userRole }: ClientsTableProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -210,7 +211,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
     setIsDeleting(false);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const columns: ExportColumn[] = [
       { key: "name", label: "Name" },
       { key: "email", label: "Email" },
@@ -234,7 +235,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
       },
     ];
 
-    exportToCSV(processedClients, columns, `clients-${getTimestamp()}.csv`);
+    await exportToCSVAsync(processedClients, columns, `clients-${getTimestamp()}.csv`);
     toast({
       variant: "success",
       title: "Exported",
@@ -312,7 +313,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                 <SortIcon column="created_at" />
               </TableHead>
               <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">
-                Actions
+                {userRole === "billing_executive" ? "View" : "Actions"}
               </TableHead>
             </TableRow>
             <TableRow>
@@ -405,21 +406,25 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                 </TableCell>
                 <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
                   <div className="flex justify-end gap-1 sm:gap-2">
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link href={`/dashboard/clients/${client.id}/edit`}>
-                        <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setClientToDelete(client.id);
-                        setDeleteDialogOpen(true);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
-                    </Button>
+                    {userRole !== "billing_executive" && (
+                      <>
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link href={`/dashboard/clients/${client.id}/edit`}>
+                            <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setClientToDelete(client.id);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

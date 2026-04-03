@@ -26,6 +26,7 @@ import { usePagination } from "@/hooks/use-pagination";
 import { TablePagination } from "@/components/table-pagination";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
+import { exportToCSVAsync, ExportColumn, getTimestamp } from "@/lib/export-utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +55,7 @@ interface PricingRule {
   products: {
     name: string;
     paper_price: string;
+    operator_price?: string | number | null;
   };
 }
 
@@ -95,7 +97,7 @@ export function ClientPricingTable({
     category: "",
   });
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (processedRules.length === 0) {
       toast({
         variant: "destructive",
@@ -104,19 +106,17 @@ export function ClientPricingTable({
       });
       return;
     }
-    const exportData = processedRules.map((rule) => ({
-      Client: rule.clients.name,
-      Product: rule.products.name,
-      "Operator Price": `₹${calculateOperatorPrice(rule).toFixed(2)}`,
-      "Base Price Type":
-        rule.fixed_base_value !== null ? "Fixed Value" : "Default",
-      "Base Category / Fixed Value":
+    const exportRows = processedRules.map((rule) => ({
+      client: rule.clients.name,
+      product: rule.products.name,
+      operator_price: `₹${calculateOperatorPrice(rule).toFixed(2)}`,
+      base_price_type: rule.fixed_base_value !== null ? "Fixed Value" : "Default",
+      base_category_or_fixed:
         rule.fixed_base_value !== null
           ? `₹${rule.fixed_base_value.toFixed(2)}`
           : `₹${Number(rule.products.paper_price || 0).toFixed(2)}`,
-      "Rule Type":
-        ruleTypeLabels[rule.price_rule_type as keyof typeof ruleTypeLabels],
-      "Rule Value":
+      rule_type: ruleTypeLabels[rule.price_rule_type as keyof typeof ruleTypeLabels],
+      rule_value:
         rule.price_rule_type === "discount_percentage"
           ? `${rule.price_rule_value}%`
           : rule.price_rule_type === "discount_flat"
@@ -126,47 +126,34 @@ export function ClientPricingTable({
               : rule.price_rule_type === "conditional_discount"
                 ? `<₹${Number(rule.conditional_threshold || 0).toFixed(0)}: -₹${Number(rule.conditional_discount_below || 0).toFixed(0)} | ≥₹${Number(rule.conditional_threshold || 0).toFixed(0)}: -₹${Number(rule.conditional_discount_above_equal || 0).toFixed(0)}`
                 : `× ${rule.price_rule_value}`,
-      "Final Price": `₹${calculateFinalPrice(rule).toFixed(2)}`,
-      "Margin Amount": `₹${calculateMarginValue(rule).toFixed(2)}`,
-      "Margin %": `${calculateMarginPercent(rule).toFixed(2)}%`,
-      Notes: rule.notes || "",
-      "Created At": new Date(rule.created_at).toLocaleDateString(),
+      final_price: `₹${calculateFinalPrice(rule).toFixed(2)}`,
+      margin_amount: `₹${calculateMarginValue(rule).toFixed(2)}`,
+      margin_percent: `${calculateMarginPercent(rule).toFixed(2)}%`,
+      notes: rule.notes || "",
+      created_at: new Date(rule.created_at).toLocaleDateString(),
     }));
 
-    const headers = Object.keys(exportData[0]);
-    const csvContent = [
-      headers.join(","),
-      ...exportData.map((row) =>
-        headers
-          .map((header) => {
-            const value = row[header as keyof typeof row];
-            // Escape quotes and wrap in quotes if contains comma
-            const stringValue = String(value || "");
-            return stringValue.includes(",") || stringValue.includes('"')
-              ? `"${stringValue.replace(/"/g, '""')}"`
-              : stringValue;
-          })
-          .join(","),
-      ),
-    ].join("\n");
+    const columns: ExportColumn[] = [
+      { key: "client", label: "Client" },
+      { key: "product", label: "Product" },
+      { key: "operator_price", label: "Operator Price" },
+      { key: "base_price_type", label: "Base Price Type" },
+      { key: "base_category_or_fixed", label: "Base Category / Fixed Value" },
+      { key: "rule_type", label: "Rule Type" },
+      { key: "rule_value", label: "Rule Value" },
+      { key: "final_price", label: "Final Price" },
+      { key: "margin_amount", label: "Margin Amount" },
+      { key: "margin_percent", label: "Margin %" },
+      { key: "notes", label: "Notes" },
+      { key: "created_at", label: "Created At" },
+    ];
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `pricing-rules-${new Date().toISOString().split("T")[0]}.csv`,
-    );
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    await exportToCSVAsync(exportRows, columns, `pricing-rules-${getTimestamp()}.csv`);
 
     toast({
       variant: "success",
       title: "Exported",
-      description: `${exportData.length} pricing rules exported to CSV successfully.`,
+      description: `${exportRows.length} pricing rules exported to CSV successfully.`,
     });
   };
 
@@ -184,7 +171,7 @@ export function ClientPricingTable({
   };
 
   const calculateOperatorPrice = (rule: PricingRule) =>
-    Number(rule.operator_price ?? rule.products.paper_price ?? 0);
+    Number(rule.products.operator_price ?? rule.products.paper_price ?? 0);
 
   const calculateFinalPrice = (rule: PricingRule) => {
     const basePrice =
@@ -328,7 +315,7 @@ export function ClientPricingTable({
     setIsDeleting(false);
   };
 
-  const colSpan = userRole !== "admin" ? 9 : 8;
+  const colSpan = 9;
 
   return (
     <>
@@ -396,11 +383,9 @@ export function ClientPricingTable({
                 Margin %
                 <SortIcon column="margin" />
               </TableHead>
-              {userRole !== "admin" && (
-                <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">
-                  Actions
-                </TableHead>
-              )}
+              <TableHead className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                Actions
+              </TableHead>
             </TableRow>
             <TableRow>
               <TableHead className="px-2 sm:px-4 py-2 sm:py-3">
@@ -436,9 +421,7 @@ export function ClientPricingTable({
               <TableHead className="hidden md:table-cell px-2 sm:px-4 py-2 sm:py-3"></TableHead>
               <TableHead className="px-2 sm:px-4 py-2 sm:py-3"></TableHead>
               <TableHead className="px-2 sm:px-4 py-2 sm:py-3"></TableHead>
-              {userRole !== "admin" && (
-                <TableHead className="px-2 sm:px-4 py-2 sm:py-3"></TableHead>
-              )}
+              <TableHead className="px-2 sm:px-4 py-2 sm:py-3"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -515,30 +498,28 @@ export function ClientPricingTable({
                   <TableCell className={`px-2 sm:px-4 py-2 sm:py-3 text-right text-xs sm:text-sm font-semibold ${marginPercent < 0 ? "text-red-600" : "text-blue-700"}`}>
                     {marginPercent.toFixed(2)}%
                   </TableCell>
-                  {userRole !== "admin" && (
-                    <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
-                      <div className="flex justify-end gap-1 sm:gap-2">
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link
-                            href={`/dashboard/client-pricing/${rule.id}/edit`}
-                          >
-                            <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
-                          </Link>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setRuleToDelete(rule.id);
-                            setDeleteDialogOpen(true);
-                          }}
-                          disabled={isDeleting}
+                  <TableCell className="text-right px-2 sm:px-4 py-2 sm:py-3">
+                    <div className="flex justify-end gap-1 sm:gap-2">
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link
+                          href={`/dashboard/client-pricing/${rule.id}/edit`}
                         >
-                          <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  )}
+                          <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setRuleToDelete(rule.id);
+                          setDeleteDialogOpen(true);
+                        }}
+                        disabled={isDeleting}
+                      >
+                        <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               );
             })}

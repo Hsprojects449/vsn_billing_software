@@ -9,19 +9,19 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Invoice Pro - Billing Management System",
-  description: "Professional billing and invoice management system for businesses",
+  title: "VSN BillPro - Billing Management System",
+  description: "Professional GST-compliant billing and invoice management system for Indian businesses by VSN Groups",
   generator: "v0.app",
   icons: {
     icon: [
       {
-        url: "/VSN%20Groups%20LOGO.jpeg",
+        url: "/VSN_Groups_LOGO-removebg-preview.png",
         rel: "icon",
-        type: "image/jpeg",
+        type: "image/png",
       },
     ],
-    shortcut: "/VSN%20Groups%20LOGO.jpeg",
-    apple: "/VSN%20Groups%20LOGO.jpeg",
+    shortcut: "/VSN_Groups_LOGO-removebg-preview.png",
+    apple: "/VSN_Groups_LOGO-removebg-preview.png",
   },
 }
 

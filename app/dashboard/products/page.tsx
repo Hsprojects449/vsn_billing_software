@@ -8,7 +8,19 @@ import { Suspense } from "react"
 import { LoadingOverlay } from "@/components/loading-overlay"
 import { redirect } from "next/navigation"
 
-async function ProductsContent() {
+async function ProductsContent({ userRole, organizationId }: { userRole: string; organizationId: string }) {
+  const supabase = await createClient()
+
+  const { data: products } = await supabase
+    .from("products")
+    .select("*, operators(name), profiles!products_created_by_fkey(full_name)")
+    .eq("organization_id", organizationId)
+    .order("position", { ascending: true })
+
+  return <ProductsTable products={products || []} userRole={userRole} />
+}
+
+export default async function ProductsPage() {
   const supabase = await createClient()
 
   const {
@@ -19,41 +31,39 @@ async function ProductsContent() {
     redirect("/auth/login")
   }
 
-  // Get user's organization
   const { data: profile } = await supabase
     .from("profiles")
-    .select("organization_id")
+    .select("role, organization_id")
     .eq("id", user.id)
-    .single()
+    .maybeSingle()
 
-  if (!profile) {
+  const userRole = profile?.role || "accountant"
+  const organizationId = profile?.organization_id
+
+  if (!organizationId) {
     redirect("/dashboard")
   }
 
-  const { data: products } = await supabase
-    .from("products")
-    .select("*, operators(name), profiles!products_created_by_fkey(full_name)")
-    .eq("organization_id", profile.organization_id)
-    .order("position", { ascending: true })
+  if (userRole === "accountant") {
+    redirect("/dashboard/gst-filings")
+  }
 
-  return <ProductsTable products={products || []} />
-}
-
-export default async function ProductsPage() {
   return (
     <DashboardPageWrapper title="Products & Services">
       <div className="w-full p-4 sm:p-6 lg:p-8 space-y-4">
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3">
-          <Button asChild className="w-full sm:w-auto">
-            <Link href="/dashboard/products/new">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
-            </Link>
-          </Button>
+          {userRole !== "billing_executive" && (
+            <Button asChild className="w-full sm:w-auto">
+              <Link href="/dashboard/products/new">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Product
+              </Link>
+            </Button>
+          )}
         </div>
 
         <Suspense fallback={<LoadingOverlay />}>
-          <ProductsContent />
+          <ProductsContent userRole={userRole} organizationId={organizationId} />
         </Suspense>
       </div>
     </DashboardPageWrapper>

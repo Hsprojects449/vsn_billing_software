@@ -30,9 +30,9 @@ export default async function PricesPage() {
     redirect("/dashboard")
   }
 
-  // If accountant, go directly to Update Prices page
+  // Accountants can only access GST filing tab
   if (profile.role === "accountant") {
-    redirect("/dashboard/prices/new")
+    redirect("/dashboard/gst-filings")
   }
 
   // Get all price categories with latest prices

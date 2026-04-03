@@ -1,10 +1,32 @@
 import { createClient } from "@/lib/supabase/server"
 import { ProductForm } from "@/components/product-form"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect("/auth/login")
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle()
+
+  if (profile?.role === "billing_executive") {
+    redirect("/dashboard/products")
+  }
+
+  if (profile?.role === "accountant") {
+    redirect("/dashboard/gst-filings")
+  }
 
   const [{ data: product }, { data: operators }] = await Promise.all([
     supabase.from("products").select("*").eq("id", id).single(),

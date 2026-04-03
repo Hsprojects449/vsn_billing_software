@@ -1,6 +1,32 @@
 import { ClientForm } from "@/components/client-form"
+import { createClient } from "@/lib/supabase/server"
+import { redirect } from "next/navigation"
 
-export default function NewClientPage() {
+export default async function NewClientPage() {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect("/auth/login")
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle()
+
+  if (profile?.role === "billing_executive") {
+    redirect("/dashboard/clients")
+  }
+
+  if (profile?.role === "accountant") {
+    redirect("/dashboard/gst-filings")
+  }
+
   return (
     <div className="p-6 lg:p-8">
       <div className="mb-6">
