@@ -85,6 +85,7 @@ export function PrintableQuotation({ quotation, template }: PrintableQuotationPr
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
+  const roundedGrossTotal = Math.round(Number(quotation.total_amount || 0));
 
   const issueDateFormatted = new Date(quotation.issue_date).toLocaleDateString("en-IN", {
     year: "numeric",
@@ -257,7 +258,7 @@ export function PrintableQuotation({ quotation, template }: PrintableQuotationPr
                   <tr key={`quotation-item-${index}`}>
                     <td className="border border-slate-400 px-2 py-1 text-center align-top">{index + 1}</td>
                     <td className="border border-slate-400 px-2 py-1 text-center align-top font-medium">
-                      <div>{item.description}</div>
+                      <div>{item.products?.name || item.description}</div>
                     </td>
                     <td className="border border-slate-400 px-2 py-1 text-right align-top">
                       {Number(item.quantity).toLocaleString("en-IN", {
@@ -282,7 +283,7 @@ export function PrintableQuotation({ quotation, template }: PrintableQuotationPr
                   <td className="border border-slate-400 px-2 py-1">&nbsp;</td>
                   <td className="border border-slate-400 px-2 py-1 text-right font-semibold">Gross Total</td>
                   <td className="border border-slate-400 px-2 py-1 text-right text-[14px] font-bold">
-                    {formatCurrency(quotation.total_amount)}
+                    {formatCurrency(roundedGrossTotal)}
                   </td>
                 </tr>
               </tbody>

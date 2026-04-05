@@ -107,6 +107,9 @@ export function GstFilingsPageClient({ clients, invoices }: GstFilingsPageClient
     return invoices.filter((invoice) => {
       if (selectedClientId && invoice.client_id !== selectedClientId) return false;
 
+      const clientTaxId = (invoice.clients?.tax_id || "").trim();
+      if (!clientTaxId || clientTaxId.toLowerCase().startsWith("no gst")) return false;
+
       const { start, end } = getFinancialYearDateRange(selectedFY);
       if (invoice.issue_date < start || invoice.issue_date > end) return false;
 

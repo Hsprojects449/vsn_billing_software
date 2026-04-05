@@ -25,7 +25,13 @@ export default async function GstFilingsPage() {
   }
 
   const [clientsResult, invoicesResult] = await Promise.all([
-    supabase.from("clients").select("id, name").order("name", { ascending: true }),
+    supabase
+      .from("clients")
+      .select("id, name")
+      .not("tax_id", "is", null)
+      .not("tax_id", "eq", "")
+      .not("tax_id", "ilike", "no gst%")
+      .order("name", { ascending: true }),
     supabase
       .from("invoices")
       .select(
@@ -39,10 +45,14 @@ export default async function GstFilingsPage() {
         total_amount,
         gst_percent,
         split_gst,
-        clients(name, tax_id),
+        clients!inner(name, tax_id),
         invoice_items(line_total, products(hsn_code))
       `,
       )
+      .eq("status", "paid")
+      .not("clients.tax_id", "is", null)
+      .not("clients.tax_id", "eq", "")
+      .not("clients.tax_id", "ilike", "no gst%")
       .order("issue_date", { ascending: true }),
   ]);
 

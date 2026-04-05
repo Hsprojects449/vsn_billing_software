@@ -93,6 +93,7 @@ export async function POST(request: Request) {
     }
 
     const invoiceNumber = String(generatedInvoiceNumber);
+    const roundedInvoiceTotal = Math.round(Number(quotation.total_amount || 0));
 
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
         subtotal: quotation.subtotal,
         tax_amount: 0,
         discount_amount: 0,
-        total_amount: quotation.total_amount,
+        total_amount: roundedInvoiceTotal,
         amount_paid: 0,
         total_birds: 0,
         notes: quotation.notes,

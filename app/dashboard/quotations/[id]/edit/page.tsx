@@ -47,6 +47,7 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
           quotation_type: quotation.quotation_type,
           issue_date: quotation.issue_date,
           due_date: quotation.due_date,
+          gst_percent: quotation.gst_percent,
           notes: quotation.notes,
           status: quotation.status,
         }}

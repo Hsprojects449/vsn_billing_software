@@ -61,6 +61,7 @@ interface QuotationFormProps {
     quotation_type: "whatsapp" | "other";
     issue_date: string;
     due_date: string;
+    gst_percent?: number | null;
     notes: string | null;
     status: string;
   };
@@ -149,6 +150,10 @@ export function QuotationForm({
     quotation_type: initialQuotation?.quotation_type || "other",
     issue_date: initialQuotation?.issue_date || today,
     due_date: initialQuotation?.due_date || defaultDue,
+    gst_percent:
+      initialQuotation?.gst_percent != null
+        ? String(Number(initialQuotation.gst_percent))
+        : "0",
     notes: initialQuotation?.notes || "",
   });
 
@@ -258,8 +263,15 @@ export function QuotationForm({
       (sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0),
       0,
     );
-    return { subtotal, total_amount: subtotal };
-  }, [items]);
+    const gst_amount = (subtotal * Math.max(0, Number(formData.gst_percent || 0))) / 100;
+    const gross_before_round = subtotal + gst_amount;
+
+    return {
+      subtotal,
+      gst_amount,
+      total_amount: Math.round(gross_before_round),
+    };
+  }, [items, formData.gst_percent]);
 
   const clientOptions = useMemo(
     () =>
@@ -343,6 +355,7 @@ export function QuotationForm({
             due_date: formData.due_date,
             status: "recorded",
             subtotal: totals.subtotal,
+            gst_percent: Number(formData.gst_percent || 0),
             total_amount: totals.total_amount,
             notes: formData.notes || null,
             organization_id: profile.organization_id,
@@ -366,6 +379,7 @@ export function QuotationForm({
             issue_date: formData.issue_date,
             due_date: formData.due_date,
             subtotal: totals.subtotal,
+            gst_percent: Number(formData.gst_percent || 0),
             total_amount: totals.total_amount,
             notes: formData.notes || null,
           })
@@ -490,6 +504,20 @@ export function QuotationForm({
                 required
               />
             </div>
+
+            <div className="space-y-2">
+              <Label>GST (%)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.gst_percent}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, gst_percent: e.target.value }))
+                }
+                placeholder="0"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -533,7 +561,7 @@ export function QuotationForm({
 
                     updateItem(index, {
                       product_id: productId,
-                      description: product?.description || product?.name || "",
+                      description: product?.name || product?.description || "",
                       unit_price: unitPrice,
                     });
                   }}
@@ -607,7 +635,7 @@ export function QuotationForm({
       <Card>
         <CardContent className="pt-6">
           <div className="grid gap-2 text-sm md:max-w-sm md:ml-auto">
-            <div className="flex justify-between font-bold text-base"><span>Total</span><span>Rs. {totals.total_amount.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold text-base"><span>Gross Total</span><span>Rs. {totals.total_amount.toFixed(2)}</span></div>
           </div>
 
           {error && <p className="text-sm text-red-600 mt-4">{error}</p>}

@@ -334,6 +334,7 @@ CREATE TABLE IF NOT EXISTS public.quotations (
   due_date DATE NOT NULL,
   status TEXT NOT NULL DEFAULT 'recorded' CHECK (status IN ('draft', 'recorded', 'converted', 'cancelled')),
   subtotal NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  gst_percent NUMERIC(10, 4) NOT NULL DEFAULT 0,
   total_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
   notes TEXT,
   converted_invoice_id UUID REFERENCES public.invoices(id) ON DELETE SET NULL,
@@ -771,11 +772,35 @@ CREATE POLICY "Super Admins can delete profiles"
   ON public.profiles FOR DELETE
   USING (public.is_admin(auth.uid()));
 
--- Clients
+-- Clients (with accountant GST ID restriction)
 DROP POLICY IF EXISTS "Users can view clients in their organization" ON public.clients;
 CREATE POLICY "Users can view clients in their organization"
   ON public.clients FOR SELECT
-  USING (organization_id = public.get_user_organization(auth.uid()));
+  USING (
+    organization_id = public.get_user_organization(auth.uid())
+    AND (
+      -- Non-accountants see all clients
+      EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = auth.uid()
+          AND p.role IN ('super_admin', 'admin', 'billing_executive')
+          AND p.is_active = true
+      )
+      OR
+      -- Accountants only see clients with valid GST IDs
+      (
+        EXISTS (
+          SELECT 1 FROM public.profiles p
+          WHERE p.id = auth.uid()
+            AND p.role = 'accountant'
+            AND p.is_active = true
+        )
+        AND clients.tax_id IS NOT NULL
+        AND clients.tax_id != ''
+        AND clients.tax_id NOT ILIKE 'no gst%'
+      )
+    )
+  );
 
 DROP POLICY IF EXISTS "Users can create clients in their organization" ON public.clients;
 CREATE POLICY "Users can create clients in their organization"
@@ -939,7 +964,7 @@ CREATE POLICY "Privileged users can delete pricing rules"
     )
   );
 
--- Invoices (with creator-role visibility)
+-- Invoices (with creator-role visibility and accountant paid+GST restriction)
 DROP POLICY IF EXISTS "Users can view invoices in their organization" ON public.invoices;
 CREATE POLICY "Users can view invoices in their organization"
   ON public.invoices FOR SELECT
@@ -951,8 +976,9 @@ CREATE POLICY "Users can view invoices in their organization"
       WHERE viewer.id = auth.uid()
         AND viewer.is_active = true
         AND (
+          -- Super admin can see all
           viewer.role = 'super_admin'
-          OR viewer.role = 'accountant'
+          -- Non-accountant roles with standard creator-based visibility
           OR (
             viewer.role IN ('admin', 'billing_executive')
             AND EXISTS (
@@ -961,6 +987,19 @@ CREATE POLICY "Users can view invoices in their organization"
               WHERE creator.id = invoices.created_by
                 AND creator.organization_id = invoices.organization_id
                 AND creator.role IN ('admin', 'billing_executive')
+            )
+          )
+          -- Accountants: only paid invoices from clients with valid GST ID
+          OR (
+            viewer.role = 'accountant'
+            AND invoices.status = 'paid'
+            AND EXISTS (
+              SELECT 1
+              FROM public.clients c
+              WHERE c.id = invoices.client_id
+                AND c.tax_id IS NOT NULL
+                AND c.tax_id != ''
+                AND c.tax_id NOT ILIKE 'no gst%'
             )
           )
         )
@@ -1047,7 +1086,7 @@ CREATE POLICY "Privileged users can delete invoices"
     )
   );
 
--- Invoice items (with creator-role visibility)
+-- Invoice items (with creator-role visibility and accountant paid+GST restriction)
 DROP POLICY IF EXISTS "Authenticated users can view invoice items" ON public.invoice_items;
 CREATE POLICY "Authenticated users can view invoice items"
   ON public.invoice_items FOR SELECT
@@ -1057,15 +1096,25 @@ CREATE POLICY "Authenticated users can view invoice items"
       FROM public.invoices i
       JOIN public.profiles viewer ON viewer.id = auth.uid()
       LEFT JOIN public.profiles creator ON creator.id = i.created_by
+      LEFT JOIN public.clients c ON c.id = i.client_id
       WHERE i.id = invoice_items.invoice_id
         AND i.organization_id = public.get_user_organization(auth.uid())
         AND viewer.is_active = true
         AND (
+          -- Super admin can see all
           viewer.role = 'super_admin'
-          OR viewer.role = 'accountant'
+          -- Non-accountant roles with standard creator-based visibility
           OR (
             viewer.role IN ('admin', 'billing_executive')
             AND creator.role IN ('admin', 'billing_executive')
+          )
+          -- Accountants: only items from paid invoices with valid GST clients
+          OR (
+            viewer.role = 'accountant'
+            AND i.status = 'paid'
+            AND c.tax_id IS NOT NULL
+            AND c.tax_id != ''
+            AND c.tax_id NOT ILIKE 'no gst%'
           )
         )
     )
@@ -1332,7 +1381,7 @@ CREATE POLICY "Users can delete their own notifications"
   ON public.notifications FOR DELETE
   USING (user_id = auth.uid());
 
--- Quotations (with creator-role visibility)
+-- Quotations (with creator-role visibility and accountant GST client restriction)
 DROP POLICY IF EXISTS "Users can view quotations in their organization" ON public.quotations;
 CREATE POLICY "Users can view quotations in their organization"
   ON public.quotations FOR SELECT
@@ -1344,7 +1393,9 @@ CREATE POLICY "Users can view quotations in their organization"
       WHERE viewer.id = auth.uid()
         AND viewer.is_active = true
         AND (
+          -- Super admin can see all
           viewer.role = 'super_admin'
+          -- Non-accountant roles with standard creator-based visibility
           OR (
             viewer.role IN ('admin', 'billing_executive')
             AND EXISTS (
@@ -1353,6 +1404,18 @@ CREATE POLICY "Users can view quotations in their organization"
               WHERE creator.id = quotations.created_by
                 AND creator.organization_id = quotations.organization_id
                 AND creator.role IN ('admin', 'billing_executive')
+            )
+          )
+          -- Accountants: only quotations from clients with valid GST ID
+          OR (
+            viewer.role = 'accountant'
+            AND EXISTS (
+              SELECT 1
+              FROM public.clients c
+              WHERE c.id = quotations.client_id
+                AND c.tax_id IS NOT NULL
+                AND c.tax_id != ''
+                AND c.tax_id NOT ILIKE 'no gst%'
             )
           )
         )
@@ -1456,14 +1519,24 @@ CREATE POLICY "Authenticated users can view quotation items"
       FROM public.quotations q
       JOIN public.profiles viewer ON viewer.id = auth.uid()
       LEFT JOIN public.profiles creator ON creator.id = q.created_by
+      LEFT JOIN public.clients c ON c.id = q.client_id
       WHERE q.id = quotation_items.quotation_id
         AND q.organization_id = public.get_user_organization(auth.uid())
         AND viewer.is_active = true
         AND (
+          -- Super admin can see all
           viewer.role = 'super_admin'
+          -- Non-accountant roles with standard creator-based visibility
           OR (
             viewer.role IN ('admin', 'billing_executive')
             AND creator.role IN ('admin', 'billing_executive')
+          )
+          -- Accountants: only items from quotations with valid GST clients
+          OR (
+            viewer.role = 'accountant'
+            AND c.tax_id IS NOT NULL
+            AND c.tax_id != ''
+            AND c.tax_id NOT ILIKE 'no gst%'
           )
         )
     )

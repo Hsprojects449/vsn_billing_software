@@ -39,7 +39,7 @@ export default async function NewInvoicePage({
   const [clientsResult, productsResult, pricingRulesResult, latestInvoiceResult] = await Promise.all([
     supabase
       .from("clients")
-      .select("id, name, email, due_days, due_days_type")
+      .select("id, name, email, tax_id, due_days, due_days_type")
       .order("name"),
     supabase.from("products").select("*").eq("is_active", true).order("name"),
     supabase

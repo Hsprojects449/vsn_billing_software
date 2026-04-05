@@ -32,6 +32,7 @@ interface Client {
   id: string;
   name: string;
   email: string;
+  tax_id?: string | null;
   due_days?: number | null;
   due_days_type?: string | null;
 }
@@ -122,6 +123,16 @@ const getNextInvoiceNumber = (value: string) => {
     .padStart(numericPart.length, "0");
 
   return sanitizeInvoiceNumberInput(`${prefix}${nextValue}`);
+};
+
+const shouldDefaultToSplitGst = (taxId?: string | null) => {
+  const normalized = (taxId || "").trim().toLowerCase();
+
+  if (!normalized) return true;
+  if (normalized.startsWith("37")) return true;
+  if (normalized.includes("no gst")) return true;
+
+  return false;
 };
 
 export function InvoiceForm({
@@ -547,6 +558,13 @@ export function InvoiceForm({
     const days = client?.due_days ?? 30;
     const daysType = client?.due_days_type ?? "fixed_days";
     const newDue = computeDueDateByType(formData.issue_date, daysType, days);
+    const shouldAutoApplyGstDefault =
+      !initialInvoice?.id || clientId !== initialInvoice.client_id;
+
+    if (shouldAutoApplyGstDefault) {
+      setSplitGst(shouldDefaultToSplitGst(client?.tax_id));
+    }
+
     setSelectedDueDays(days);
     setSelectedDueDaysType(daysType);
     setFormData({ ...formData, client_id: clientId, due_date: newDue });
@@ -571,6 +589,7 @@ export function InvoiceForm({
     subtotal: 0,
     tax_amount: 0,
     discount_amount: 0,
+    round_off: 0,
     total_amount: 0,
   });
 
@@ -619,11 +638,13 @@ export function InvoiceForm({
       return sum + (itemSubtotal * Number(item.discount || 0)) / 100;
     }, 0);
 
-    // Total amount based on line totals and invoice-level adjustments
-    const total_amount =
+    // Round final total to nearest rupee and keep round-off delta for display.
+    const unrounded_total =
       baseSubtotal +
       invoice_tax_amount -
       invoice_discount_amount;
+    const total_amount = Math.round(unrounded_total);
+    const round_off = total_amount - unrounded_total;
     const tax_amount = line_tax_amount + invoice_tax_amount;
     const discount_amount = line_discount_amount + invoice_discount_amount;
 
@@ -631,6 +652,7 @@ export function InvoiceForm({
       subtotal: baseSubtotal,
       tax_amount,
       discount_amount,
+      round_off,
       total_amount,
     });
   }, [items, invoiceRates]);
@@ -1444,6 +1466,13 @@ export function InvoiceForm({
               </div>
             )}
 
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Round Off:</span>
+              <span className="font-medium">
+                {totals.round_off >= 0 ? "+" : "-"}₹{Math.abs(totals.round_off).toFixed(2)}
+              </span>
+            </div>
+
             <div className="flex justify-between text-lg font-bold border-t pt-2">
               <span>Total:</span>
               <span>₹{totals.total_amount.toFixed(2)}</span>
@@ -1482,8 +1511,7 @@ export function InvoiceForm({
           type="submit"
           disabled={
             isLoading ||
-            !formData.client_id ||
-            !formData.invoice_number
+            !formData.client_id
           }
         >
           {isLoading ? "Creating..." : "Create Invoice"}

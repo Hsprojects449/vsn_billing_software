@@ -1,0 +1,2 @@
+ALTER TABLE public.quotations
+  ADD COLUMN IF NOT EXISTS gst_percent NUMERIC(10, 4) NOT NULL DEFAULT 0;

@@ -31,7 +31,10 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
         state,
         zip_code
       ),
-      quotation_items (*)
+      quotation_items (
+        *,
+        products (name)
+      )
     `)
     .eq("id", id)
     .single();

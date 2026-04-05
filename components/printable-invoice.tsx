@@ -85,6 +85,10 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
   const activeTemplate = template || defaultTemplate;
   const activeTaxLabel =
     activeTemplate.tax_label === "GST" ? "IGST" : activeTemplate.tax_label;
+  const roundOff =
+    Number(invoice.total_amount) -
+    (Number(invoice.subtotal) + Number(invoice.tax_amount) - Number(invoice.discount_amount));
+  const shouldShowRoundOff = Math.abs(roundOff) <= 0.5;
   const balance = Number(invoice.total_amount) - Number(invoice.amount_paid);
   const logoSrc =
     activeTemplate.company_logo_file || activeTemplate.company_logo_url;
@@ -328,6 +332,15 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
                   <div className="flex justify-between gap-4 text-green-700">
                     <span>Discount</span>
                     <span>-{formatCurrency(invoice.discount_amount)}</span>
+                  </div>
+                )}
+                {shouldShowRoundOff && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-600">Round Off</span>
+                    <span className="font-medium">
+                      {roundOff >= 0 ? "+" : "-"}
+                      {formatCurrency(Math.abs(roundOff))}
+                    </span>
                   </div>
                 )}
                 <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 text-base font-bold text-slate-900">
