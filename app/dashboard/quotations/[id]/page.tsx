@@ -45,11 +45,13 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
 
   let template = null;
   if (quotation.organization_id) {
+    const templateType = quotation.quotation_type === "whatsapp" ? "quotation_whatsapp" : "quotation_other";
     const { data: templateData } = await supabase
       .from("invoice_templates")
       .select("*")
       .eq("organization_id", quotation.organization_id)
-      .single();
+      .eq("template_type", templateType)
+      .maybeSingle();
 
     template = templateData;
   }

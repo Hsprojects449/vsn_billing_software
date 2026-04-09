@@ -26,7 +26,7 @@ export default async function SettingsPage() {
 
   const isManagerViewOnly = profile.role === "admin"
 
-  const [{ data: organization }, { data: template }] = await Promise.all([
+  const [{ data: organization }, { data: templates }] = await Promise.all([
     supabase
       .from("organizations")
       .select("*")
@@ -36,8 +36,12 @@ export default async function SettingsPage() {
       .from("invoice_templates")
       .select("*")
       .eq("organization_id", profile.organization_id)
-      .single(),
+      .in("template_type", ["invoice", "quotation_whatsapp", "quotation_other"]),
   ])
+
+  const invoiceTemplate = templates?.find((template) => template.template_type === "invoice") ?? null
+  const whatsappQuotationTemplate = templates?.find((template) => template.template_type === "quotation_whatsapp") ?? null
+  const otherQuotationTemplate = templates?.find((template) => template.template_type === "quotation_other") ?? null
 
   return (
     <DashboardPageWrapper title="System Settings">
@@ -78,7 +82,43 @@ export default async function SettingsPage() {
               <CardDescription>Customize invoice appearance and branding</CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
-              <InvoiceTemplateForm existingTemplate={template} />
+              <InvoiceTemplateForm
+                existingTemplate={invoiceTemplate}
+                templateType="invoice"
+                title="Invoice Template Settings"
+                description="Customize how your invoices appear when printed"
+              />
+            </CardContent>
+          </Card>
+
+          <Card className={isManagerViewOnly ? "pointer-events-none opacity-60" : ""}>
+            <CardHeader>
+              <CardTitle>Quotation Template (WhatsApp)</CardTitle>
+              <CardDescription>Customize WhatsApp quotation layout and category table</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <InvoiceTemplateForm
+                existingTemplate={whatsappQuotationTemplate}
+                templateType="quotation_whatsapp"
+                title="WhatsApp Quotation Template Settings"
+                description="Customize how WhatsApp quotations appear when printed"
+                enableWhatsappTable
+              />
+            </CardContent>
+          </Card>
+
+          <Card className={isManagerViewOnly ? "pointer-events-none opacity-60" : ""}>
+            <CardHeader>
+              <CardTitle>Quotation Template (Other Services)</CardTitle>
+              <CardDescription>Customize non-WhatsApp quotation layout and content</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <InvoiceTemplateForm
+                existingTemplate={otherQuotationTemplate}
+                templateType="quotation_other"
+                title="Other Services Quotation Template Settings"
+                description="Customize how other service quotations appear when printed"
+              />
             </CardContent>
           </Card>
 

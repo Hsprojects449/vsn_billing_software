@@ -66,7 +66,8 @@ export default async function InvoiceDetailPage({
         .from("invoice_templates")
         .select("*")
         .eq("organization_id", profile.organization_id)
-        .single();
+        .eq("template_type", "invoice")
+        .maybeSingle();
 
       template = templateData;
     }

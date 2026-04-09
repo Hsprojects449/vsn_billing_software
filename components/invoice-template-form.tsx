@@ -12,12 +12,16 @@ import { useToast } from "@/hooks/use-toast"
 
 interface InvoiceTemplate {
   id?: string
+  template_type?: TemplateType
   company_name: string
   company_address: string
   company_phone: string
   company_email: string
   company_logo_url: string
   company_logo_file: string | null
+  company_stamp_url: string
+  company_stamp_file: string | null
+  signatory_label: string
   tax_label: string
   note_content: string
   payment_instructions: string
@@ -33,9 +37,17 @@ interface WhatsAppTemplateRow {
 
 interface InvoiceTemplateFormProps {
   existingTemplate?: InvoiceTemplate | null
+  templateType: TemplateType
+  title: string
+  description: string
+  enableWhatsappTable?: boolean
 }
 
+type TemplateType = "invoice" | "quotation_whatsapp" | "quotation_other"
+
 const DEFAULT_LOGO_URL = "/VSN_Groups_LOGO-removebg-preview.png"
+const DEFAULT_STAMP_URL = "/hyd_stamp_%26_Sign.png"
+const DEFAULT_SIGNATORY_LABEL = "Authorized Signatory"
 
 const DEFAULT_WHATSAPP_TEMPLATE_ROWS: WhatsAppTemplateRow[] = [
   {
@@ -83,7 +95,13 @@ const normalizeWhatsappTemplateRows = (rows: unknown): WhatsAppTemplateRow[] => 
   return normalizedRows.length > 0 ? normalizedRows : DEFAULT_WHATSAPP_TEMPLATE_ROWS
 }
 
-export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormProps) {
+export function InvoiceTemplateForm({
+  existingTemplate,
+  templateType,
+  title,
+  description,
+  enableWhatsappTable = false,
+}: InvoiceTemplateFormProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -91,14 +109,21 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
   const [logoPreview, setLogoPreview] = useState<string | null>(
     existingTemplate?.company_logo_file || existingTemplate?.company_logo_url || DEFAULT_LOGO_URL
   )
+  const [stampPreview, setStampPreview] = useState<string | null>(
+    existingTemplate?.company_stamp_file || existingTemplate?.company_stamp_url || DEFAULT_STAMP_URL
+  )
 
   const [formData, setFormData] = useState<InvoiceTemplate>({
+    template_type: templateType,
     company_name: existingTemplate?.company_name || "",
     company_address: existingTemplate?.company_address || "",
     company_phone: existingTemplate?.company_phone || "",
     company_email: existingTemplate?.company_email || "",
     company_logo_url: existingTemplate?.company_logo_url || (existingTemplate?.company_logo_file ? "" : DEFAULT_LOGO_URL),
     company_logo_file: existingTemplate?.company_logo_file || null,
+    company_stamp_url: existingTemplate?.company_stamp_url || (existingTemplate?.company_stamp_file ? "" : DEFAULT_STAMP_URL),
+    company_stamp_file: existingTemplate?.company_stamp_file || null,
+    signatory_label: existingTemplate?.signatory_label || DEFAULT_SIGNATORY_LABEL,
     tax_label:
       existingTemplate?.tax_label === "GST"
         ? "IGST"
@@ -110,7 +135,9 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
       existingTemplate?.payment_instructions ||
       "1. Please make all payments to the company account only.\n2. Share payment confirmation with transaction reference.\n3. Contact billing support for any clarification.",
     terms_and_conditions: existingTemplate?.terms_and_conditions || "Payment is due within 30 days. Late payments may incur additional charges.",
-    whatsapp_template_rows: normalizeWhatsappTemplateRows(existingTemplate?.whatsapp_template_rows),
+    whatsapp_template_rows: enableWhatsappTable
+      ? normalizeWhatsappTemplateRows(existingTemplate?.whatsapp_template_rows)
+      : DEFAULT_WHATSAPP_TEMPLATE_ROWS,
   })
 
   const updateWhatsappRow = (index: number, field: keyof WhatsAppTemplateRow, value: string) => {
@@ -165,9 +192,38 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
     }
   }
 
+  const handleStampFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (!file.type.startsWith("image/")) {
+        setError("Please upload an image file")
+        return
+      }
+
+      if (file.size > 2 * 1024 * 1024) {
+        setError("Image size should be less than 2MB")
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64String = reader.result as string
+        setFormData({ ...formData, company_stamp_file: base64String, company_stamp_url: "" })
+        setStampPreview(base64String)
+        setError(null)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
   const clearLogo = () => {
     setFormData({ ...formData, company_logo_file: null, company_logo_url: "" })
     setLogoPreview(null)
+  }
+
+  const clearStamp = () => {
+    setFormData({ ...formData, company_stamp_file: null, company_stamp_url: "" })
+    setStampPreview(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -198,11 +254,17 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
         throw new Error("User must belong to an organization")
       }
 
+      const payload = {
+        ...formData,
+        template_type: templateType,
+        organization_id: profile.organization_id,
+      }
+
       if (existingTemplate?.id) {
         // Update existing template
         const { error } = await supabase
           .from("invoice_templates")
-          .update(formData)
+          .update(payload)
           .eq("id", existingTemplate.id)
 
         if (error) throw error
@@ -210,10 +272,7 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
         // Create new template (upsert to handle unique constraint)
         const { error } = await supabase
           .from("invoice_templates")
-          .upsert({
-            ...formData,
-            organization_id: profile.organization_id,
-          })
+          .upsert(payload, { onConflict: "organization_id,template_type" })
 
         if (error) throw error
       }
@@ -221,7 +280,7 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
       toast({
         variant: "success",
         title: "Success",
-        description: "Invoice template settings updated successfully!",
+        description: `${title} updated successfully!`,
       })
       router.push("/dashboard/settings")
       router.refresh()
@@ -241,9 +300,9 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Invoice Template Settings</CardTitle>
+        <CardTitle>{title}</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Customize how your invoices appear when printed
+          {description}
         </p>
       </CardHeader>
       <CardContent>
@@ -390,6 +449,88 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
             </div>
           </div>
 
+          <div className="space-y-3">
+            <Label>Authorized Signatory Stamp</Label>
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="company_stamp_file" className="text-sm font-normal">
+                  Upload Stamp File
+                </Label>
+                <Input
+                  id="company_stamp_file"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleStampFileUpload}
+                  disabled={!!formData.company_stamp_url}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Upload stamp/signature image (PNG, JPG, max 2MB)
+                </p>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-muted-foreground">Or</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="company_stamp_url" className="text-sm font-normal">
+                  Stamp URL
+                </Label>
+                <Input
+                  id="company_stamp_url"
+                  type="url"
+                  value={formData.company_stamp_url}
+                  onChange={(e) => {
+                    setFormData({ ...formData, company_stamp_url: e.target.value, company_stamp_file: null })
+                    setStampPreview(e.target.value)
+                  }}
+                  placeholder="https://example.com/stamp.png"
+                  disabled={!!formData.company_stamp_file}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Or provide a URL to your stamp/signature image
+                </p>
+              </div>
+
+              {stampPreview && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-normal">Preview</Label>
+                  <div className="relative inline-block">
+                    <img
+                      src={stampPreview}
+                      alt="Stamp preview"
+                      className="h-20 w-auto object-contain border rounded-md p-2"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
+                      onClick={clearStamp}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="signatory_label">Signatory Label</Label>
+            <Input
+              id="signatory_label"
+              value={formData.signatory_label}
+              onChange={(e) => setFormData({ ...formData, signatory_label: e.target.value })}
+              placeholder="Authorized Signatory"
+            />
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="note_content">Notes (Print Template)</Label>
             <Textarea
@@ -423,73 +564,75 @@ export function InvoiceTemplateForm({ existingTemplate }: InvoiceTemplateFormPro
             />
           </div>
 
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <Label>WhatsApp Quotation Category Table</Label>
-                <p className="text-sm text-muted-foreground">
-                  Configure the rows shown in the WhatsApp quotation category pricing table.
-                </p>
-              </div>
-              <Button type="button" variant="outline" onClick={addWhatsappRow}>
-                Add Row
-              </Button>
-            </div>
-
+          {enableWhatsappTable && (
             <div className="space-y-4">
-              {formData.whatsapp_template_rows.map((row, index) => (
-                <div key={`${row.category}-${index}`} className="space-y-3 rounded-lg border p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <p className="text-sm font-medium">Row {index + 1}</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => removeWhatsappRow(index)}
-                      disabled={formData.whatsapp_template_rows.length === 1}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Category</Label>
-                      <Input
-                        value={row.category}
-                        onChange={(e) => updateWhatsappRow(index, "category", e.target.value)}
-                        placeholder="Marketing"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Price per Message</Label>
-                      <Input
-                        value={row.price_per_message}
-                        onChange={(e) => updateWhatsappRow(index, "price_per_message", e.target.value)}
-                        placeholder="89.5-Paisa"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Type of Template</Label>
-                    <Textarea
-                      value={row.template_type}
-                      onChange={(e) => updateWhatsappRow(index, "template_type", e.target.value)}
-                      placeholder="Template description shown in the WhatsApp quotation"
-                      rows={3}
-                    />
-                  </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <Label>WhatsApp Quotation Category Table</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Configure the rows shown in the WhatsApp quotation category pricing table.
+                  </p>
                 </div>
-              ))}
+                <Button type="button" variant="outline" onClick={addWhatsappRow}>
+                  Add Row
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                {formData.whatsapp_template_rows.map((row, index) => (
+                  <div key={`${row.category}-${index}`} className="space-y-3 rounded-lg border p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-sm font-medium">Row {index + 1}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => removeWhatsappRow(index)}
+                        disabled={formData.whatsapp_template_rows.length === 1}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Category</Label>
+                        <Input
+                          value={row.category}
+                          onChange={(e) => updateWhatsappRow(index, "category", e.target.value)}
+                          placeholder="Marketing"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Price per Message</Label>
+                        <Input
+                          value={row.price_per_message}
+                          onChange={(e) => updateWhatsappRow(index, "price_per_message", e.target.value)}
+                          placeholder="89.5-Paisa"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Type of Template</Label>
+                      <Textarea
+                        value={row.template_type}
+                        onChange={(e) => updateWhatsappRow(index, "template_type", e.target.value)}
+                        placeholder="Template description shown in the WhatsApp quotation"
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</div>}
 
           <div className="flex gap-4">
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Saving..." : existingTemplate ? "Update Template" : "Save Template"}
+              {isLoading ? "Saving..." : existingTemplate ? `Update ${title}` : `Save ${title}`}
             </Button>
             <Button type="button" variant="outline" onClick={() => router.back()}>
               Cancel

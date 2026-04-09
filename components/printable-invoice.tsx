@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Printer } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface InvoiceTemplate {
@@ -13,6 +13,9 @@ interface InvoiceTemplate {
   company_email: string;
   company_logo_url: string | null;
   company_logo_file: string | null;
+  company_stamp_url?: string | null;
+  company_stamp_file?: string | null;
+  signatory_label?: string | null;
   tax_label: string;
   note_content?: string | null;
   payment_instructions?: string | null;
@@ -65,6 +68,7 @@ interface PrintableInvoiceProps {
 export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
   const [isPrinting, setIsPrinting] = useState(false);
   const router = useRouter();
+  const printAreaRef = useRef<HTMLDivElement | null>(null);
 
   const defaultTemplate: InvoiceTemplate = {
     company_name: "Your Company Name",
@@ -73,6 +77,9 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
     company_email: "info@company.com",
     company_logo_url: "/VSN_Groups_LOGO-removebg-preview.png",
     company_logo_file: null,
+    company_stamp_url: "/hyd_stamp_%26_Sign.png",
+    company_stamp_file: null,
+    signatory_label: "Authorized Signatory",
     tax_label: "IGST",
     note_content:
       "1. Material once sold will not be taken back.\n2. Kindly verify quantity and amount before confirmation.",
@@ -92,7 +99,12 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
   const balance = Number(invoice.total_amount) - Number(invoice.amount_paid);
   const logoSrc =
     activeTemplate.company_logo_file || activeTemplate.company_logo_url;
-  const stampSrc = "/hyd_stamp_%26_Sign.png";
+  const stampSrc =
+    activeTemplate.company_stamp_file ||
+    activeTemplate.company_stamp_url ||
+    "/hyd_stamp_%26_Sign.png";
+  const signatoryLabel =
+    (activeTemplate.signatory_label || "").trim() || "Authorized Signatory";
   const issueDateFormatted = new Date(invoice.issue_date).toLocaleDateString(
     "en-IN",
     {
@@ -133,8 +145,43 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
       maximumFractionDigits: 2,
     })}`;
 
+  const getDpi = () => {
+    const probe = document.createElement("div");
+    probe.style.width = "1in";
+    probe.style.height = "1in";
+    probe.style.position = "absolute";
+    probe.style.left = "-100%";
+    document.body.appendChild(probe);
+    const dpi = probe.offsetWidth || 96;
+    document.body.removeChild(probe);
+    return dpi;
+  };
+
+  const applyOnePagePrintScale = () => {
+    const element = printAreaRef.current;
+    if (!element) return;
+
+    const dpi = getDpi();
+    const pageWidthPx = (210 / 25.4) * dpi;
+    const pageHeightPx = (297 / 25.4) * dpi;
+    const marginPx = (0.45 / 2.54) * dpi;
+    const printableWidth = pageWidthPx - marginPx * 2;
+    const printableHeight = pageHeightPx - marginPx * 2;
+
+    const contentWidth = element.scrollWidth;
+    const contentHeight = element.scrollHeight;
+    const fitScale = Math.min(1, printableWidth / contentWidth, printableHeight / contentHeight) * 0.98;
+
+    document.documentElement.style.setProperty("--print-scale", fitScale.toFixed(3));
+  };
+
+  const resetPrintScale = () => {
+    document.documentElement.style.setProperty("--print-scale", "1");
+  };
+
   const handlePrint = () => {
     setIsPrinting(true);
+    applyOnePagePrintScale();
     setTimeout(() => {
       window.print();
       setIsPrinting(false);
@@ -162,7 +209,9 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
           position: absolute;
           left: 0;
           top: 0;
-          width: 100%;
+          width: calc(100% / var(--print-scale, 1));
+          transform: scale(var(--print-scale, 1));
+          transform-origin: top left;
         }
         .no-print {
           display: none !important;
@@ -195,8 +244,15 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
       }
     `;
     document.head.appendChild(style);
+    const handleBeforePrint = () => applyOnePagePrintScale();
+    const handleAfterPrint = () => resetPrintScale();
+    window.addEventListener("beforeprint", handleBeforePrint);
+    window.addEventListener("afterprint", handleAfterPrint);
     return () => {
       document.head.removeChild(style);
+      window.removeEventListener("beforeprint", handleBeforePrint);
+      window.removeEventListener("afterprint", handleAfterPrint);
+      resetPrintScale();
     };
   }, []);
 
@@ -212,7 +268,7 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
         </Button>
       </div>
 
-      <Card className="print-area overflow-hidden border-slate-300 shadow-lg print:shadow-none">
+      <Card ref={printAreaRef} className="print-area overflow-hidden border-slate-300 shadow-lg print:shadow-none">
         <CardContent className="relative p-5 md:p-6 text-sm print:text-[12px] print:leading-snug bg-white">
           <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-cyan-700 via-blue-800 to-cyan-700" />
 
@@ -241,12 +297,6 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
                   />
                 )}
                 <div className="min-w-[230px] rounded-sm border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                  <div className="flex justify-between gap-4 py-1 border-b border-slate-200">
-                    <span className="font-semibold uppercase tracking-wide">Document</span>
-                    <span className="font-bold tracking-[0.18em]">
-                      {invoice.status === "draft" ? "QUOTATION" : "INVOICE"}
-                    </span>
-                  </div>
                   <div className="flex justify-between gap-4 py-1">
                     <span className="font-semibold">Number</span>
                     <span>{invoice.invoice_number}</span>
@@ -274,9 +324,6 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
             <h2 className="inline-block text-2xl font-bold tracking-[0.2em] border border-slate-600 px-6 py-1 rounded-sm bg-slate-50">
               {invoice.status === "draft" ? "QUOTATION" : "INVOICE"}
             </h2>
-            <p className="text-xs mt-2 uppercase tracking-[0.24em] text-slate-500">
-              Prepared For {invoice.clients.name}
-            </p>
           </div>
 
           <div className="mb-4 grid gap-3 md:grid-cols-[1.5fr_1fr] print-force-2col print-no-break">
@@ -464,7 +511,7 @@ export function PrintableInvoice({ invoice, template }: PrintableInvoiceProps) {
                   className="h-[86px] w-[165px] object-contain ml-auto"
                 />
                 <p className="text-xs uppercase tracking-wide mt-1 text-slate-700">
-                  Authorized Signatory
+                  {signatoryLabel}
                 </p>
               </div>
             </div>
