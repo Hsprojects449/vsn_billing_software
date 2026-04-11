@@ -144,6 +144,88 @@ export function PrintableInvoice({ invoice, template, organizationTaxId }: Print
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
+  const numberToWords = (value: number) => {
+    const ones = [
+      "",
+      "one",
+      "two",
+      "three",
+      "four",
+      "five",
+      "six",
+      "seven",
+      "eight",
+      "nine",
+      "ten",
+      "eleven",
+      "twelve",
+      "thirteen",
+      "fourteen",
+      "fifteen",
+      "sixteen",
+      "seventeen",
+      "eighteen",
+      "nineteen",
+    ];
+    const tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+    const convertBelowThousand = (num: number): string => {
+      const parts: string[] = [];
+
+      if (num >= 100) {
+        parts.push(`${ones[Math.floor(num / 100)]} hundred`);
+        num %= 100;
+      }
+
+      if (num >= 20) {
+        parts.push(tens[Math.floor(num / 10)]);
+        if (num % 10) {
+          parts.push(ones[num % 10]);
+        }
+      } else if (num > 0) {
+        parts.push(ones[num]);
+      }
+
+      return parts.join(" ").trim();
+    };
+
+    if (!Number.isFinite(value) || value <= 0) {
+      return "Zero rupees only";
+    }
+
+    const rupees = Math.floor(value);
+    const paise = Math.round((value - rupees) * 100);
+    const segments = [
+      { divisor: 10000000, label: "crore" },
+      { divisor: 100000, label: "lakh" },
+      { divisor: 1000, label: "thousand" },
+    ];
+
+    let remainder = rupees;
+    const words: string[] = [];
+
+    segments.forEach(({ divisor, label }) => {
+      if (remainder >= divisor) {
+        const segmentValue = Math.floor(remainder / divisor);
+        words.push(`${convertBelowThousand(segmentValue)} ${label}`);
+        remainder %= divisor;
+      }
+    });
+
+    if (remainder > 0) {
+      words.push(convertBelowThousand(remainder));
+    }
+
+    const rupeesWords = words.join(" ").trim() || "zero";
+    const capitalizedRupees = rupeesWords.charAt(0).toUpperCase() + rupeesWords.slice(1);
+
+    if (paise > 0) {
+      return `${capitalizedRupees} rupees and ${convertBelowThousand(paise)} paise only`;
+    }
+
+    return `${capitalizedRupees} rupees only`;
+  };
+  const totalAmountInWords = numberToWords(Number(invoice.total_amount));
 
   const getDpi = () => {
     const probe = document.createElement("div");
@@ -162,20 +244,46 @@ export function PrintableInvoice({ invoice, template, organizationTaxId }: Print
     if (!element) return;
 
     const dpi = getDpi();
-    const pageWidthPx = (210 / 25.4) * dpi;
-    const pageHeightPx = (297 / 25.4) * dpi;
-    const marginPx = (0.45 / 2.54) * dpi;
-    const printableWidth = pageWidthPx - marginPx * 2;
-    const printableHeight = pageHeightPx - marginPx * 2;
+    const printableWidth = ((210 / 25.4) - 2 * (0.45 / 2.54)) * dpi;
+    const printableHeight = ((297 / 25.4) - 2 * (0.45 / 2.54)) * dpi;
+
+    // Temporarily apply print-mode grid/flex layouts to get accurate content height
+    // (these classes only activate in @media print, so screen scrollHeight is wrong without this)
+    type SavedStyle = { el: HTMLElement; cssText: string };
+    const saved: SavedStyle[] = [];
+    element.querySelectorAll<HTMLElement>(".print-force-2col,.print-force-3col,.print-force-row").forEach((el) => {
+      saved.push({ el, cssText: el.style.cssText });
+      if (el.classList.contains("print-force-2col")) {
+        el.style.display = "grid";
+        el.style.gridTemplateColumns = "1.5fr 1fr";
+      } else if (el.classList.contains("print-force-3col")) {
+        el.style.display = "grid";
+        el.style.gridTemplateColumns = "1fr 1fr 1fr";
+      } else if (el.classList.contains("print-force-row")) {
+        el.style.display = "flex";
+        el.style.flexDirection = "row";
+      }
+    });
 
     const contentWidth = element.scrollWidth;
     const contentHeight = element.scrollHeight;
-    const fitScale = Math.min(1, printableWidth / contentWidth, printableHeight / contentHeight) * 0.98;
 
-    document.documentElement.style.setProperty("--print-scale", fitScale.toFixed(3));
+    saved.forEach(({ el, cssText }) => { el.style.cssText = cssText; });
+
+    const MIN_SCALE = 0.82;
+    const rawFitScale = Math.min(1, printableWidth / contentWidth, printableHeight / contentHeight);
+    if (rawFitScale >= MIN_SCALE) {
+      document.documentElement.setAttribute("data-print-fit", "1");
+      document.documentElement.style.setProperty("--print-scale", rawFitScale.toFixed(3));
+    } else {
+      // content too long for one page - let it paginate naturally
+      document.documentElement.removeAttribute("data-print-fit");
+      document.documentElement.style.setProperty("--print-scale", "1");
+    }
   };
 
   const resetPrintScale = () => {
+    document.documentElement.removeAttribute("data-print-fit");
     document.documentElement.style.setProperty("--print-scale", "1");
   };
 
@@ -209,6 +317,9 @@ export function PrintableInvoice({ invoice, template, organizationTaxId }: Print
           position: absolute;
           left: 0;
           top: 0;
+          width: 100%;
+        }
+        html[data-print-fit] .print-area {
           width: calc(100% / var(--print-scale, 1));
           transform: scale(var(--print-scale, 1));
           transform-origin: top left;
@@ -269,7 +380,7 @@ export function PrintableInvoice({ invoice, template, organizationTaxId }: Print
       </div>
 
       <Card ref={printAreaRef} className="print-area overflow-hidden border-slate-300 shadow-lg print:shadow-none">
-        <CardContent className="relative p-5 md:p-6 text-sm print:text-[12px] print:leading-snug bg-white">
+        <CardContent className="relative p-5 md:p-6 text-sm print:text-[13px] print:leading-snug bg-white">
           <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-cyan-700 via-blue-800 to-cyan-700" />
 
           <div className="border-b border-slate-700 pb-4 mb-4 pt-2">
@@ -399,6 +510,9 @@ export function PrintableInvoice({ invoice, template, organizationTaxId }: Print
                   <span>Total</span>
                   <span>{formatCurrency(invoice.total_amount)}</span>
                 </div>
+                <p className="border-t border-slate-100 pt-2 text-xs font-medium italic text-slate-600">
+                  Amount in words: {totalAmountInWords}
+                </p>
                 {Number(invoice.amount_paid) > 0 && (
                   <>
                     <div className="flex justify-between gap-4 text-green-700">

@@ -74,6 +74,8 @@ interface QuotationFormProps {
   }>;
 }
 
+const WHATSAPP_PRODUCT_NAMES = ["API Charges", "Business WhatsApp"];
+
 const sanitizeQuotationNumberInput = (value: string) =>
   value.replace(/[^A-Za-z0-9-]/g, "");
 
@@ -114,6 +116,67 @@ export function QuotationForm({
   const defaultDue = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0];
+
+  // Moved up so it can be used in initial state calculation
+  const calculateClientPrice = (productId: string, clientId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return 0;
+
+    const pricingRule = clientPricingRules.find(
+      (rule) => rule.product_id === productId && rule.client_id === clientId,
+    );
+
+    if (!pricingRule) return Number(product.unit_price || 0);
+
+    let basePrice = Number(product.paper_price || product.unit_price || 0);
+    if (pricingRule.fixed_base_value != null) {
+      basePrice = Number(pricingRule.fixed_base_value);
+    }
+
+    const ruleValue = Number(pricingRule.price_rule_value || 0);
+    switch (pricingRule.price_rule_type) {
+      case "discount_percentage":
+        return Math.max(0, basePrice * (1 - ruleValue / 100));
+      case "discount_flat":
+        return Math.max(0, basePrice - ruleValue);
+      case "multiplier":
+        return Math.max(0, basePrice * ruleValue);
+      case "flat_addition":
+        return Math.max(0, basePrice + ruleValue);
+      case "conditional_discount": {
+        const threshold = Number(pricingRule.conditional_threshold || 0);
+        const below = Number(pricingRule.conditional_discount_below || 0);
+        const aboveEqual = Number(
+          pricingRule.conditional_discount_above_equal || 0,
+        );
+        const selectedDiscount = basePrice >= threshold ? aboveEqual : below;
+        return Math.max(0, basePrice - selectedDiscount);
+      }
+      default:
+        return Math.max(0, basePrice);
+    }
+  };
+
+  const buildDefaultItems = (type: "whatsapp" | "other", clientId: string): QuotationItem[] => {
+    const targetProducts =
+      type === "whatsapp"
+        ? products.filter((p) => WHATSAPP_PRODUCT_NAMES.includes(p.name))
+        : products.filter((p) => !WHATSAPP_PRODUCT_NAMES.includes(p.name));
+
+    return targetProducts.map((p) => {
+      const unitPrice = clientId
+        ? calculateClientPrice(p.id, clientId)
+        : Number(p.unit_price || 0);
+      const quantity = 100000;
+      return {
+        product_id: p.id,
+        description: p.name,
+        quantity,
+        unit_price: unitPrice,
+        line_total: quantity * unitPrice,
+      };
+    });
+  };
 
   const computeDueDate = (
     issueDate: string,
@@ -157,53 +220,23 @@ export function QuotationForm({
     notes: initialQuotation?.notes || "",
   });
 
-  const [items, setItems] = useState<QuotationItem[]>(
-    initialItems?.map((item) => ({
-      ...item,
-      quantity: Number(item.quantity),
-      unit_price: Number(item.unit_price),
-      line_total: Number(item.line_total),
-    })) || [],
-  );
+  const initialType = initialQuotation?.quotation_type || "other";
 
-  const calculateClientPrice = (productId: string, clientId: string) => {
-    const product = products.find((p) => p.id === productId);
-    if (!product) return 0;
-
-    const pricingRule = clientPricingRules.find(
-      (rule) => rule.product_id === productId && rule.client_id === clientId,
-    );
-
-    if (!pricingRule) return Number(product.unit_price || 0);
-
-    let basePrice = Number(product.paper_price || product.unit_price || 0);
-    if (pricingRule.fixed_base_value != null) {
-      basePrice = Number(pricingRule.fixed_base_value);
+  const [items, setItems] = useState<QuotationItem[]>(() => {
+    if (initialItems && initialItems.length > 0) {
+      return initialItems.map((item) => ({
+        ...item,
+        quantity: Number(item.quantity),
+        unit_price: Number(item.unit_price),
+        line_total: Number(item.line_total),
+      }));
     }
-
-    const ruleValue = Number(pricingRule.price_rule_value || 0);
-    switch (pricingRule.price_rule_type) {
-      case "discount_percentage":
-        return Math.max(0, basePrice * (1 - ruleValue / 100));
-      case "discount_flat":
-        return Math.max(0, basePrice - ruleValue);
-      case "multiplier":
-        return Math.max(0, basePrice * ruleValue);
-      case "flat_addition":
-        return Math.max(0, basePrice + ruleValue);
-      case "conditional_discount": {
-        const threshold = Number(pricingRule.conditional_threshold || 0);
-        const below = Number(pricingRule.conditional_discount_below || 0);
-        const aboveEqual = Number(
-          pricingRule.conditional_discount_above_equal || 0,
-        );
-        const selectedDiscount = basePrice >= threshold ? aboveEqual : below;
-        return Math.max(0, basePrice - selectedDiscount);
-      }
-      default:
-        return Math.max(0, basePrice);
+    // New quotation — pre-fill defaults based on type
+    if (!initialQuotation?.id) {
+      return buildDefaultItems(initialType as "whatsapp" | "other", initialQuotation?.client_id || "");
     }
-  };
+    return [];
+  });
 
   const handleClientChange = (clientId: string) => {
     const client = clients.find((c) => c.id === clientId);
@@ -281,6 +314,20 @@ export function QuotationForm({
       })),
     [clients],
   );
+
+  const unpricedProducts = useMemo(() => {
+    if (!formData.client_id) return [];
+    return items
+      .filter((item) => {
+        if (!item.product_id) return false;
+        return !clientPricingRules.some(
+          (rule) =>
+            rule.product_id === item.product_id &&
+            rule.client_id === formData.client_id,
+        );
+      })
+      .map((item) => item.description || item.product_id || "");
+  }, [items, formData.client_id, clientPricingRules]);
 
   const quotationTypeOptions = [
     { value: "whatsapp", label: "WhatsApp quotation" },
@@ -468,12 +515,14 @@ export function QuotationForm({
               <Label>Quotation Type</Label>
               <SearchableSelect
                 value={formData.quotation_type}
-                onValueChange={(value) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    quotation_type: value as "whatsapp" | "other",
-                  }))
-                }
+                onValueChange={(value) => {
+                  const newType = value as "whatsapp" | "other";
+                  setFormData((prev) => ({ ...prev, quotation_type: newType }));
+                  // For new quotations, rebuild default items when type changes
+                  if (!initialQuotation?.id) {
+                    setItems(buildDefaultItems(newType, formData.client_id));
+                  }
+                }}
                 options={quotationTypeOptions}
                 triggerClassName="h-10"
               />
@@ -541,6 +590,20 @@ export function QuotationForm({
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          {unpricedProducts.length > 0 && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="font-semibold">No pricing rule set for the following products:</p>
+              <ul className="mt-1 list-disc pl-5 space-y-0.5">
+                {unpricedProducts.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-xs text-amber-700">
+                Default unit prices are being used. Set client-specific pricing rules in Client Pricing to customise rates.
+              </p>
+            </div>
+          )}
+
           {items.length === 0 && (
             <p className="text-sm text-muted-foreground">No items added yet.</p>
           )}

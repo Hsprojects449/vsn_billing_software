@@ -120,20 +120,46 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
     if (!element) return;
 
     const dpi = getDpi();
-    const pageWidthPx = (210 / 25.4) * dpi;
-    const pageHeightPx = (297 / 25.4) * dpi;
-    const marginPx = (0.45 / 2.54) * dpi;
-    const printableWidth = pageWidthPx - marginPx * 2;
-    const printableHeight = pageHeightPx - marginPx * 2;
+    const printableWidth = ((210 / 25.4) - 2 * (0.45 / 2.54)) * dpi;
+    const printableHeight = ((297 / 25.4) - 2 * (0.45 / 2.54)) * dpi;
+
+    // Temporarily apply print-mode grid/flex layouts to get accurate content height
+    // (these classes only activate in @media print, so screen scrollHeight is wrong without this)
+    type SavedStyle = { el: HTMLElement; cssText: string };
+    const saved: SavedStyle[] = [];
+    element.querySelectorAll<HTMLElement>(".print-force-2col,.print-force-3col,.print-force-row").forEach((el) => {
+      saved.push({ el, cssText: el.style.cssText });
+      if (el.classList.contains("print-force-2col")) {
+        el.style.display = "grid";
+        el.style.gridTemplateColumns = "1.5fr 1fr";
+      } else if (el.classList.contains("print-force-3col")) {
+        el.style.display = "grid";
+        el.style.gridTemplateColumns = "1fr 1fr 1fr";
+      } else if (el.classList.contains("print-force-row")) {
+        el.style.display = "flex";
+        el.style.flexDirection = "row";
+      }
+    });
 
     const contentWidth = element.scrollWidth;
     const contentHeight = element.scrollHeight;
-    const fitScale = Math.min(1, printableWidth / contentWidth, printableHeight / contentHeight) * 0.98;
 
-    document.documentElement.style.setProperty("--print-scale", fitScale.toFixed(3));
+    saved.forEach(({ el, cssText }) => { el.style.cssText = cssText; });
+
+    const MIN_SCALE = 0.82;
+    const rawFitScale = Math.min(1, printableWidth / contentWidth, printableHeight / contentHeight);
+    if (rawFitScale >= MIN_SCALE) {
+      document.documentElement.setAttribute("data-print-fit", "1");
+      document.documentElement.style.setProperty("--print-scale", rawFitScale.toFixed(3));
+    } else {
+      // content too long for one page - let it paginate naturally
+      document.documentElement.removeAttribute("data-print-fit");
+      document.documentElement.style.setProperty("--print-scale", "1");
+    }
   };
 
   const resetPrintScale = () => {
+    document.documentElement.removeAttribute("data-print-fit");
     document.documentElement.style.setProperty("--print-scale", "1");
   };
   const roundedGrossTotal = Math.round(Number(quotation.total_amount || 0));
@@ -186,6 +212,9 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
           position: absolute;
           left: 0;
           top: 0;
+          width: 100%;
+        }
+        html[data-print-fit] .print-area {
           width: calc(100% / var(--print-scale, 1));
           transform: scale(var(--print-scale, 1));
           transform-origin: top left;
@@ -238,26 +267,26 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
       </div>
 
       <Card ref={printAreaRef} className="print-area overflow-hidden border-slate-300 shadow-lg print:shadow-none">
-        <CardContent className="relative bg-white p-5 text-[13px] leading-snug text-slate-900 md:p-6 print:p-4 print:text-[11px]">
+        <CardContent className="relative bg-white p-5 text-[14px] leading-snug text-slate-900 md:p-6 print:p-4 print:text-[13px]">
           <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-cyan-700 via-blue-800 to-cyan-700" />
 
           <div className="mx-auto max-w-[820px]">
             <div className="border-b border-slate-700 pb-4 pt-2">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 pr-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500 print:text-[10px]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
                     Proposal Document
                   </p>
-                  <h1 className="mt-1 text-3xl font-extrabold uppercase tracking-[0.14em] text-slate-900 print:text-[28px]">
+                  <h1 className="mt-1 text-3xl font-extrabold uppercase tracking-[0.14em] text-slate-900">
                     {activeTemplate.company_name}
                   </h1>
                   {companyTagline && (
-                    <p className="mt-2 max-w-xl text-sm font-medium leading-relaxed text-slate-700 print:mt-1.5 print:text-[11px]">
+                    <p className="mt-2 max-w-xl text-sm font-medium leading-relaxed text-slate-700 print:mt-1.5">
                       {companyTagline}
                     </p>
                   )}
                   {organizationTaxId && (
-                    <p className="mt-1 text-xs font-semibold text-slate-700 print:text-[10px]">
+                    <p className="mt-1 text-xs font-semibold text-slate-700">
                       GST/Tax ID: {organizationTaxId}
                     </p>
                   )}
@@ -267,7 +296,7 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
                   {logoSrc && (
                     <img src={logoSrc} alt="Company Logo" className="h-14 w-auto object-contain print:h-12" />
                   )}
-                  <div className="min-w-[235px] rounded-sm border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 print:min-w-[220px] print:px-2.5 print:py-1.5 print:text-[10px]">
+                  <div className="min-w-[235px] rounded-sm border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 print:min-w-[220px] print:px-2.5 print:py-1.5">
                     <div className="flex justify-between gap-4 py-1">
                       <span className="font-semibold">Number</span>
                       <span>{quotation.quotation_number}</span>
@@ -294,24 +323,24 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
             </div>
 
             <div className="mb-4 border border-slate-300 rounded-sm bg-slate-50 p-3 print-no-break print:p-2.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 print:text-[10px]">To</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">To</p>
               <p className="mt-1 text-lg font-bold leading-tight print:text-[16px]">{quotation.clients?.name}</p>
-              {quotation.clients?.address && <p className="mt-1 text-slate-700 print:text-[11px]">{quotation.clients.address}</p>}
+              {quotation.clients?.address && <p className="mt-1 text-slate-700">{quotation.clients.address}</p>}
               {quotation.clients?.city && (
-                <p className="text-slate-700 print:text-[11px]">
+                <p className="text-slate-700">
                   {quotation.clients.city}
                   {quotation.clients.state ? `, ${quotation.clients.state}` : ""}
                 </p>
               )}
             </div>
 
-            <p className="mb-3 text-[13px] text-slate-700 print:mb-2 print:text-[11px]">
+            <p className="mb-3 text-[14px] text-slate-700 print:mb-2">
               {isWhatsapp
                 ? "We are one of the Leading WhatsApp service providers & SMS Services"
                 : "We are pleased to share our quotation for the following services."}
             </p>
 
-            <table className="w-full border border-slate-500 text-[13px] print-no-break print:text-[10.5px]">
+            <table className="w-full border border-slate-500 text-[13px] print-no-break">
               <thead>
                 <tr className="bg-slate-100">
                   <th className="border border-slate-500 bg-slate-100 px-2 py-1 text-left font-semibold w-[9%]">Sl.No</th>
@@ -358,7 +387,7 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
             </table>
 
             {isWhatsapp && (
-              <table className="mt-4 w-full border border-slate-500 text-[12px] print-no-break print:mt-3 print:text-[10px]">
+              <table className="mt-4 w-full border border-slate-500 text-[12px] print-no-break print:mt-3">
                 <thead>
                   <tr className="bg-slate-100">
                     <th className="border border-slate-500 px-2 py-1 text-left font-semibold w-[18%]">Category</th>
@@ -383,13 +412,13 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
                 <div className="rounded-sm border border-slate-300 bg-slate-50 p-3 print:p-2.5">
                   <p className="font-bold text-slate-900">Note :</p>
                   {noteLines.length > 0 ? (
-                    <ol className="ml-4 list-decimal space-y-0.5 text-[12px] text-slate-700 print:text-[10px]">
+                    <ol className="ml-4 list-decimal space-y-0.5 text-[12px] text-slate-700">
                       {noteLines.map((line, idx) => (
                         <li key={`quotation-note-${idx}`}>{line}</li>
                       ))}
                     </ol>
                   ) : (
-                    <ol className="ml-4 list-decimal space-y-0.5 text-[12px] text-slate-700 print:text-[10px]">
+                    <ol className="ml-4 list-decimal space-y-0.5 text-[12px] text-slate-700">
                       <li>Rates are subject to approval and policy changes.</li>
                       <li>Applicable taxes, if any, will be charged as per current rules.</li>
                     </ol>
@@ -399,13 +428,13 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
                 <div className="rounded-sm border border-slate-300 bg-white p-3 print:p-2.5">
                   <p className="font-bold text-slate-900">Payment Instructions :</p>
                   {paymentInstructionLines.length > 0 ? (
-                    <ol className="ml-4 list-decimal space-y-0.5 text-[12px] text-slate-700 print:text-[10px]">
+                    <ol className="ml-4 list-decimal space-y-0.5 text-[12px] text-slate-700">
                       {paymentInstructionLines.map((line, idx) => (
                         <li key={`quotation-pay-${idx}`}>{line}</li>
                       ))}
                     </ol>
                   ) : (
-                    <ol className="ml-4 list-decimal space-y-0.5 text-[12px] text-slate-700 print:text-[10px]">
+                    <ol className="ml-4 list-decimal space-y-0.5 text-[12px] text-slate-700">
                       <li>Please make payment to the company account only.</li>
                       <li>Share payment confirmation with reference details.</li>
                     </ol>
@@ -414,12 +443,12 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
               </div>
 
               {quotation.notes && (
-                <div className="rounded-sm border border-amber-200 bg-amber-50/60 px-3 py-2 text-[12px] font-semibold text-slate-700 print:px-2.5 print:py-1.5 print:text-[10px]">
+                <div className="rounded-sm border border-amber-200 bg-amber-50/60 px-3 py-2 text-[12px] font-semibold text-slate-700 print:px-2.5 print:py-1.5">
                   <span>Remark:</span> {quotation.notes}
                 </div>
               )}
 
-              <div className="pt-2 text-center text-[13px] font-medium text-slate-700 print:pt-1 print:text-[11px]">
+              <div className="pt-2 text-center text-[14px] font-medium text-slate-700 print:pt-1">
                 Thank you for your business
               </div>
 
@@ -434,7 +463,7 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
                       />
                     )}
                     {signatoryLabel && (
-                      <p className="mt-1 text-xs uppercase tracking-wide text-slate-700 print:text-[10px]">
+                      <p className="mt-1 text-xs uppercase tracking-wide text-slate-700">
                         {signatoryLabel}
                       </p>
                     )}
@@ -442,7 +471,7 @@ export function PrintableQuotation({ quotation, template, organizationTaxId, org
                 </div>
               )}
 
-              <div className="border-t border-cyan-700/50 pt-1.5 text-center text-[10px] leading-relaxed text-slate-600 print:pt-1 print:text-[9px]">
+              <div className="border-t border-cyan-700/50 pt-1.5 text-center text-[11px] leading-relaxed text-slate-600 print:pt-1">
                 <p>
                   Address : {activeTemplate.company_address} Mobile : {activeTemplate.company_phone} Email : {activeTemplate.company_email}
                 </p>
