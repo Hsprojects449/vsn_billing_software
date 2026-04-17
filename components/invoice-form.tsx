@@ -819,17 +819,35 @@ export function InvoiceForm({
       let invoiceId = initialInvoice?.id;
 
       if (!invoiceId) {
-        // Always allocate the next number in DB to avoid RLS visibility collisions.
-        const { data: generatedInvoiceNumber, error: generateNumberError } =
-          await supabase.rpc("next_document_number", {
-            p_doc_type: "invoice",
-          });
+        let invoiceNumber: string;
 
-        if (generateNumberError || !generatedInvoiceNumber) {
-          throw generateNumberError || new Error("Failed to generate invoice number");
+        if (formData.invoice_number.trim()) {
+          invoiceNumber = formData.invoice_number.trim();
+
+          const { data: existing } = await supabase
+            .from("invoices")
+            .select("id")
+            .eq("organization_id", profile.organization_id)
+            .eq("invoice_number", invoiceNumber)
+            .maybeSingle();
+
+          if (existing) {
+            setError(`Invoice number "${invoiceNumber}" already exists. Please use a different number.`);
+            setIsLoading(false);
+            return;
+          }
+        } else {
+          const { data: generatedInvoiceNumber, error: generateNumberError } =
+            await supabase.rpc("next_document_number", {
+              p_doc_type: "invoice",
+            });
+
+          if (generateNumberError || !generatedInvoiceNumber) {
+            throw generateNumberError || new Error("Failed to generate invoice number");
+          }
+
+          invoiceNumber = String(generatedInvoiceNumber);
         }
-
-        const invoiceNumber = String(generatedInvoiceNumber);
 
         // Generate reference number with REF. prefix
         const referenceNumber = `REF-${Date.now()}`;
@@ -1084,15 +1102,15 @@ export function InvoiceForm({
                   setFormData({ ...formData, invoice_number: sanitizedValue });
                 }}
                 placeholder={
-                  initialInvoice?.id ? "Invoice number" : "Auto-generated on save"
+                  initialInvoice?.id ? "Invoice number" : "Leave blank to auto-generate"
                 }
-                disabled
+                disabled={!!initialInvoice?.id}
                 pattern="[A-Za-z0-9-]+"
               />
               <p className="text-xs text-muted-foreground">
                 {initialInvoice?.id
                   ? "Invoice number cannot be changed"
-                  : "Invoice number is auto-generated when you save."}
+                  : "Enter a custom number or leave blank to auto-generate."}
               </p>
             </div>
           </div>
